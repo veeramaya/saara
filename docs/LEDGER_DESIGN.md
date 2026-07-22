@@ -130,28 +130,60 @@ Scores derive from events, not from current rows.
 Everything below follows from that. Saara does not obstruct, nag, or moralise;
 it declines to *forget on demand*, which is a different and smaller claim.
 
+### 4.1a Draft and Released
+
+A task or event has a **publication state**, orthogonal to its lifecycle status:
+
+| State | Syncs | Counted in reporting | Deletable |
+|---|---|---|---|
+| **Draft** | No — stays on this device | **No** | Freely |
+| **Released** | Yes, everywhere | Yes | Future only (§4.2) |
+
+Releasing is **giving your word**. Before that it is thinking out loud, and
+thinking out loud should cost nothing — you can sketch a week, change your mind,
+throw it away, and none of it touches your record.
+
+This is the accounting distinction between an **unposted draft entry** and a
+**posted** one. A draft may sit in the ledger for completeness, but it does not
+move the books.
+
+It also settles the deletion tension without any special-casing: you can delete
+freely right up to the moment you commit, and after that the rule below applies.
+
 ### 4.2 Deletion policy
 
-The distinction is **whether anything actually happened**:
+> **Delete removes the future, never the past.**
+> *"I cannot undo or edit my past. The past is past — there is nothing you can
+> do. What you can alter is the current and the future you are living into."*
 
-| What | Behaviour | Why |
-|---|---|---|
-| An **open** task — created, never started or disposed | **Deletable.** Nothing beyond its creation is in the record. **No score effect.** | Changing your mind about a plan you never acted on is housekeeping, not a broken commitment. |
-| A task that has **transitioned** — started, completed, missed, rejected | **Not deletable.** The record stands. | The past cannot be undone. You did the thing, or you didn't. |
+Once a task or event has moved out of `created` into any other state, it
+happened — it existed in your plan or your execution — and the record of that
+stands. Deleting it stops it going forward; it does not reach backwards.
 
-This answers the obvious objection — *"I deleted it, why is it still counting
-against me?"* — cleanly: **it can only count against you if you actually did or
-missed it.** Delete a plan you never started and nothing happens at all.
+| What | Behaviour |
+|---|---|
+| **Draft**, any state | Deleted outright. Nothing was committed, nothing was reported. |
+| **Released**, still `created` — never acted on | Removed going forward. No transitions exist, so nothing leaves the record. |
+| **Released**, has transitioned | **The past stands.** For a repeating task, delete ends future occurrences and keeps the ones that already happened. For a single one, there is no future to remove — the record simply remains. |
+
+The recurring case is where this rule earns its keep: deleting a daily habit
+stops tomorrow's occurrence and leaves last week's completions and misses
+exactly as they were. That is the behaviour §4.2 always implied and now states
+directly.
 
 > Whole-device **Reset local data** is the one exception, and a deliberate one:
 > an explicit, confirmed, documented-as-unrecoverable wipe of everything. That
 > is a different act from quietly removing one inconvenient row.
 
+It also answers the obvious objection — *"I deleted it, why is it still counting
+against me?"* — cleanly: **it can only count against you if you actually did or
+missed it.** Delete a draft, or a plan you never started, and nothing happens.
+
 ### 4.3 Corrections, not erasures
 
-If deletion is unavailable for anything with history, genuine mistakes need a
-path. Miscategorisation is the common case: *a "watch a video" task filed under
-Health when it belonged in Entertainment.*
+If the past cannot be deleted, genuine mistakes need a path. Miscategorisation
+is the common case: *a "watch a video" task filed under Health when it belonged
+in Entertainment.*
 
 The instinct is to delete it. The right answer is to **correct** it — and to
 record that a correction happened:
@@ -304,15 +336,23 @@ Phase 1 stands alone and ships value even if 2–4 never happen.
 
 - **Device id generation** — random UUID on first run, stored in `Settings`, with
   a user-visible friendly name ("Veera's desktop") so provenance is legible.
-- **What replaces Delete on a task with history?** The action can't simply
-  vanish, or the UI looks broken. Options:
-  1. *Hide from lists* — the row leaves your views, the record stands. Keeps the
-     housekeeping instinct satisfied without touching history.
-  2. *No action at all*, with a line explaining why.
+- **Does a new task start as Draft or Released?** (§4.1a) The single biggest UX
+  call in this design.
+  - *Released by default* — quick-add stays one step; "Save as draft" is opt-in
+    for planning. Keeps the app fast; risks people committing without meaning to.
+  - *Draft by default* — committing becomes a deliberate act, which matches
+    "releasing is giving your word". But it puts a second step in front of every
+    task, and an app that is slow to capture doesn't get used.
 
-  Leaning (1): "not a policeman" (§4.1) argues for letting people tidy their
-  screen; the integrity guarantee is about the **record**, not about forcing
-  someone to keep looking at a task. Needs a call before Phase 1b.
+  Leaning: **Released by default for quick capture, Draft for anything created in
+  a planning context** (bulk import, sketching a week ahead, AI-extracted items
+  awaiting review — which is already a review queue today). Needs a call before
+  Phase 1a, since it changes the schema.
+- **What replaces Delete on a Released task with history?** The action can't just
+  vanish, or the UI looks broken. Leaning *"Hide from lists"* — the row leaves
+  your views, the record stands. "Not a policeman" (§4.1) argues for letting
+  people tidy their screen; the guarantee is about the **record**, not about
+  forcing someone to keep looking at a task.
 - **Does a correction move past-period scores?** §4.3 says yes (it fixes a
   data-entry error). The stricter accounting reading would post the adjustment
   to the current period and leave prior periods as-reported. Revisit if Saara
