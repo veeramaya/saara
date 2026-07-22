@@ -204,7 +204,11 @@ class TaskDetailScreen extends ConsumerWidget {
               historyAsync.when(
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text('$e'),
-                data: (rows) => _history(context, rows),
+                data: (rows) => _history(
+                  context,
+                  rows,
+                  ref.watch(activeAreasProvider).valueOrNull ?? const [],
+                ),
               ),
             ],
           );
@@ -626,10 +630,23 @@ class TaskDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _history(BuildContext context, List<TaskTransition> rows) {
+  /// The ledger, in words.
+  ///
+  /// Every entry used to render as `from → to`, which meant a creation and a
+  /// release — different facts, correctly stored — both printed "new → created"
+  /// and looked like a duplicate. The entry kind decides what it says.
+  Widget _history(
+    BuildContext context,
+    List<TaskTransition> rows,
+    List<Area> areas,
+  ) {
     if (rows.isEmpty) {
       return const Text('No transitions yet — the task was just created.');
     }
+    String areaName(String? id) => id == null
+        ? 'Unclassified'
+        : areas.where((a) => a.id == id).firstOrNull?.displayName ?? 'an area';
+
     final fmt = DateFormat('MMM d, h:mm a');
     return Column(
       children: [
@@ -637,9 +654,25 @@ class TaskDetailScreen extends ConsumerWidget {
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.history, size: 18),
-            title: Text('${r.fromStatus?.name ?? 'new'} → ${r.toStatus.name}'),
-            subtitle: r.note == null ? null : Text(r.note!),
+            leading: Icon(switch (r.kind) {
+              LedgerEventKind.created => Icons.add_circle_outline,
+              LedgerEventKind.released => Icons.handshake_outlined,
+              LedgerEventKind.deleted => Icons.remove_circle_outline,
+              LedgerEventKind.corrected => Icons.swap_horiz,
+              LedgerEventKind.statusChange => Icons.history,
+            }, size: 18),
+            title: Text(switch (r.kind) {
+              LedgerEventKind.created => 'Created as a draft',
+              LedgerEventKind.released => 'Committed — you gave your word',
+              LedgerEventKind.deleted => 'Removed from your lists',
+              LedgerEventKind.corrected =>
+                'Re-filed: ${areaName(r.fromAreaId)} → ${areaName(r.areaId)}',
+              LedgerEventKind.statusChange =>
+                '${r.fromStatus?.name ?? 'new'} → ${r.toStatus.name}',
+            }),
+            subtitle: (r.reason ?? r.note) == null
+                ? null
+                : Text(r.reason ?? r.note!),
             trailing: Text(
               fmt.format(r.at),
               style: Theme.of(context).textTheme.labelSmall,
