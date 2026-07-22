@@ -166,6 +166,37 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
     return n;
   }
 
+  /// Ledger entries whose moment falls in [from, to) — the input to reporting
+  /// (§4). Deliberately does **not** join to `tasks`: an entry is self-contained
+  /// and a disposition that happened must still count once the task is gone.
+  Future<List<TaskTransition>> ledgerEntriesBetween(
+    DateTime from,
+    DateTime to,
+  ) {
+    return (select(taskTransitions)
+          ..where((t) => t.at.isBiggerOrEqualValue(from))
+          ..where((t) => t.at.isSmallerThanValue(to))
+          ..orderBy([(t) => OrderingTerm(expression: t.at)]))
+        .get();
+  }
+
+  /// Ids of tasks that carry a released commitment.
+  ///
+  /// Used as the fallback for entries recorded before the draft/released
+  /// distinction existed, which have no `released` entry to anchor them. Where
+  /// a `released` entry *does* exist the ledger wins, so passing every released
+  /// id is safe.
+  Future<Set<String>> releasedTaskIds() async {
+    final rows =
+        await (selectOnly(tasks)
+              ..addColumns([tasks.id])
+              ..where(
+                tasks.publicationState.equalsValue(PublicationState.released),
+              ))
+            .get();
+    return {for (final r in rows) r.read(tasks.id)!};
+  }
+
   Future<List<TaskTransition>> transitionsFor(String taskId) =>
       (select(taskTransitions)
             ..where((t) => t.taskId.equals(taskId))

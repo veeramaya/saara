@@ -6,6 +6,7 @@ import 'data/daos/area_dao.dart';
 import 'data/daos/task_dao.dart';
 import 'data/database.dart';
 import 'domain/enums.dart';
+import 'domain/ledger_report.dart';
 import 'domain/measurable_progress.dart';
 import 'domain/parser/deterministic_parser.dart';
 import 'domain/report.dart';
@@ -162,16 +163,33 @@ class AreaScore {
   final bool hasData;
 }
 
+/// §4 area scores, derived from the **ledger** rather than from current task
+/// state (`docs/LEDGER_DESIGN.md`).
+///
+/// The change that matters: this no longer reads live rows to decide what you
+/// completed. It reads what actually happened. Deleting a missed task used to
+/// remove it from the denominator and quietly raise your score; now the miss
+/// stands, because it did.
+///
+/// Areas with measurable results still score on those — a quantitative goal
+/// ("8000 steps") is a different measurement from keeping your word, and the
+/// two shouldn't be averaged into one number.
 final areaScoresProvider = FutureProvider<List<AreaScore>>((ref) async {
   final areaDao = ref.watch(areaDaoProvider);
   final taskDao = ref.watch(taskDaoProvider);
   final areas = await areaDao.activeAreas();
   final now = DateTime.now();
-  const disposed = {
-    TaskStatus.completed,
-    TaskStatus.missed,
-    TaskStatus.rejected,
-  };
+
+  // A wide window: the ledger is the record, so reporting looks back over real
+  // history rather than only what is currently on the timeline.
+  final entries = await taskDao.ledgerEntriesBetween(
+    DateTime(now.year - 1, now.month, now.day),
+    now.add(const Duration(days: 1)),
+  );
+  final byArea = foldByArea(
+    entries,
+    legacyReleased: await taskDao.releasedTaskIds(),
+  );
 
   final scores = <AreaScore>[];
   for (final a in areas) {
@@ -187,18 +205,8 @@ final areaScoresProvider = FutureProvider<List<AreaScore>>((ref) async {
         AreaScore(area: a, score: sum / results.length, hasData: true),
       );
     } else {
-      final tasks = await taskDao.tasksForArea(a.id);
-      final done = tasks.where((t) => disposed.contains(t.status)).toList();
-      final completed = done
-          .where((t) => t.status == TaskStatus.completed)
-          .length;
-      scores.add(
-        AreaScore(
-          area: a,
-          score: done.isEmpty ? 0 : completed / done.length,
-          hasData: done.isNotEmpty,
-        ),
-      );
+      final s = byArea[a.id] ?? const LedgerScore();
+      scores.add(AreaScore(area: a, score: s.ratio, hasData: s.hasData));
     }
   }
   return scores;

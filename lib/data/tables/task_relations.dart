@@ -38,9 +38,7 @@ class TaskTransitions extends Table {
   /// / correction. Defaults to `statusChange` so pre-existing rows read
   /// correctly.
   TextColumn get kind =>
-      textEnum<LedgerEventKind>().withDefault(
-        Constant('statusChange'),
-      )();
+      textEnum<LedgerEventKind>().withDefault(Constant('statusChange'))();
 
   /// The status **in force after this entry**. For a `statusChange` that is the
   /// state moved into; for `released`, `deleted` or `corrected` the lifecycle

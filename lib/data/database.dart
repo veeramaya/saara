@@ -116,7 +116,9 @@ class AppDatabase extends _$AppDatabase {
         // Everything that already exists was being counted, so it was in effect
         // released. Saying so explicitly is more honest than leaving them to
         // the column default, which is `draft`.
-        await customStatement("UPDATE tasks SET publication_state = 'released'");
+        await customStatement(
+          "UPDATE tasks SET publication_state = 'released'",
+        );
 
         for (final c in [
           taskTransitions.kind,
@@ -171,9 +173,10 @@ class AppDatabase extends _$AppDatabase {
     if (existing != null && existing.isNotEmpty) return existing;
 
     final rng = Random.secure();
-    final id = List<int>.generate(16, (_) => rng.nextInt(256))
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
+    final id = List<int>.generate(
+      16,
+      (_) => rng.nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     await into(settings).insertOnConflictUpdate(
       SettingsCompanion.insert(key: _deviceIdKey, value: Value(id)),
     );
