@@ -132,26 +132,61 @@ it declines to *forget on demand*, which is a different and smaller claim.
 
 ### 4.2 Deletion policy
 
-The distinction is **whether anything actually happened**, not whether the row
-is convenient to remove:
+The distinction is **whether anything actually happened**:
 
-| What is deleted | Behaviour | Why |
+| What | Behaviour | Why |
 |---|---|---|
-| An **open** task — created, never started or disposed | Removed. No ledger events exist beyond its creation, so nothing is lost. **No score effect.** | Changing your mind about a plan you never acted on is ordinary housekeeping, not a broken commitment. |
-| A task **with history** — started, completed, missed, rejected | Soft-deleted and gone from your lists. Its events stand, and the deletion is itself recorded. **Score unaffected by the deletion.** | You did the thing, or you didn't. Removing the row afterwards doesn't unmake it. |
+| An **open** task — created, never started or disposed | **Deletable.** Nothing beyond its creation is in the record. **No score effect.** | Changing your mind about a plan you never acted on is housekeeping, not a broken commitment. |
+| A task that has **transitioned** — started, completed, missed, rejected | **Not deletable.** The record stands. | The past cannot be undone. You did the thing, or you didn't. |
 
 This answers the obvious objection — *"I deleted it, why is it still counting
-against me?"* — cleanly: **it can only count against you if you actually missed
-it.** Delete a plan you never started and nothing happens at all.
+against me?"* — cleanly: **it can only count against you if you actually did or
+missed it.** Delete a plan you never started and nothing happens at all.
 
-### 4.3 Creation events and abandoned plans
+> Whole-device **Reset local data** is the one exception, and a deliberate one:
+> an explicit, confirmed, documented-as-unrecoverable wipe of everything. That
+> is a different act from quietly removing one inconvenient row.
+
+### 4.3 Corrections, not erasures
+
+If deletion is unavailable for anything with history, genuine mistakes need a
+path. Miscategorisation is the common case: *a "watch a video" task filed under
+Health when it belonged in Entertainment.*
+
+The instinct is to delete it. The right answer is to **correct** it — and to
+record that a correction happened:
+
+- Re-categorising a disposed task posts a **correction event**
+  (`Health → Entertainment`, at time T, with an optional reason).
+- Nothing is erased. The original posting and the correction both stand.
+- This is the accounting parallel exactly: you never rub out an entry, you post
+  an adjusting one.
+
+**Reporting uses the corrected category.** The user is fixing a data-entry error,
+not revising the past to flatter themselves — and because the correction is
+recorded and visible, the honesty is preserved without the score being stuck
+with a typo.
+
+### 4.4 Reasons are for the user, not for the app
+
+A deletion or correction may carry a short **reason**, because *the pattern is
+worth learning from*: "I keep filing entertainment under health" is a useful
+thing to notice about yourself.
+
+Rules that keep this from becoming policing (§4.1):
+
+- **Always optional.** Never a blocking prompt, never a required field.
+- **Surfaced back to the user only** — in their own review, as "what you changed
+  and why". It is never scored, never penalised, never shown to anyone else.
+- The app does not ask "why?" in a tone that implies you owe it an answer.
+
+### 4.5 Creation events and abandoned plans
 
 Creation *is* recorded (§9.1), so a created-then-deleted open task leaves both a
-`created` and a `deleted` event. That is deliberate: the facts are preserved, but
+`created` and a `deleted` event. Deliberate: the facts are preserved, but
 **reporting excludes a task deleted while still open** from "commitments made".
 
-Facts kept; interpretation fair. The record stays complete for anyone who later
-wants to look, without penalising legitimate planning changes.
+Facts kept; interpretation fair.
 
 ---
 
@@ -269,6 +304,17 @@ Phase 1 stands alone and ships value even if 2–4 never happen.
 
 - **Device id generation** — random UUID on first run, stored in `Settings`, with
   a user-visible friendly name ("Veera's desktop") so provenance is legible.
-- **Does the `deleted` event carry a reason?** Optional free text, or nothing.
-  Leaning nothing: prompting for a reason edges toward moralising, which §4.1
-  rules out.
+- **What replaces Delete on a task with history?** The action can't simply
+  vanish, or the UI looks broken. Options:
+  1. *Hide from lists* — the row leaves your views, the record stands. Keeps the
+     housekeeping instinct satisfied without touching history.
+  2. *No action at all*, with a line explaining why.
+
+  Leaning (1): "not a policeman" (§4.1) argues for letting people tidy their
+  screen; the integrity guarantee is about the **record**, not about forcing
+  someone to keep looking at a task. Needs a call before Phase 1b.
+- **Does a correction move past-period scores?** §4.3 says yes (it fixes a
+  data-entry error). The stricter accounting reading would post the adjustment
+  to the current period and leave prior periods as-reported. Revisit if Saara
+  ever issues fixed period statements; rolling scores make the simple answer
+  right for now.
