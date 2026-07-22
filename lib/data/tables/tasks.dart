@@ -36,6 +36,21 @@ class Tasks extends Table {
   // Actual elapsed started→completed (§3.3, §4).
   IntColumn get timeToCompleteMin => integer().nullable()();
 
+  /// §4.1a draft vs released. **Everything starts as a draft** — nothing is born
+  /// committed — except an incoming Google invitation, which arrives released
+  /// because it is already in your world and you owe a response (§4.1b-i).
+  ///
+  /// Drafts sync to your other devices but not to Google, and are excluded from
+  /// reporting: present in the ledger, not moving the books.
+  ///
+  /// The column default is **draft** deliberately: if a code path ever forgets
+  /// to set this, the row is left out of scoring rather than silently counted.
+  /// Understating is a recoverable mistake; inflating someone's integrity score
+  /// without their say-so is not. (Rows predating this column are set to
+  /// `released` by the v12 migration — they were already being counted.)
+  TextColumn get publicationState =>
+      textEnum<PublicationState>().withDefault(Constant('draft'))();
+
   TextColumn get rrule => text().nullable()(); // iCalendar RRULE
   TextColumn get parentRecurringId => text().nullable()(); // instance→template
 

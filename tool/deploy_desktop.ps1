@@ -42,6 +42,18 @@ if ($running) {
 if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Force $Dest | Out-Null }
 Copy-Item -Recurse -Force (Join-Path $src "*") $Dest
 
+# Flutter does not bundle the MSVC runtime, so the folder only runs on a PC that
+# already has the Visual C++ Redistributable. Copying these three makes the
+# install self-contained — it can be carried on a USB/SSD and run anywhere.
+foreach ($dll in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+  $sys = Join-Path $env:WINDIR "System32\$dll"
+  if (Test-Path $sys) {
+    Copy-Item $sys -Destination (Join-Path $Dest $dll) -Force
+  } else {
+    Write-Host "  note: $dll not found; target PC will need the VC++ Redistributable" -ForegroundColor Yellow
+  }
+}
+
 Write-Host "Installed Saara $version to $Dest" -ForegroundColor Green
 Write-Host "Your data is untouched (%APPDATA%\com.realmaya\saara)." -ForegroundColor DarkGray
 

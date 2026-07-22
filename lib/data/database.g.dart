@@ -2167,6 +2167,16 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<PublicationState, String>
+  publicationState = GeneratedColumn<String>(
+    'publication_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: Constant('draft'),
+  ).withConverter<PublicationState>($TasksTable.$converterpublicationState);
   static const VerificationMeta _rruleMeta = const VerificationMeta('rrule');
   @override
   late final GeneratedColumn<String> rrule = GeneratedColumn<String>(
@@ -2409,6 +2419,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     dueDate,
     completedAt,
     timeToCompleteMin,
+    publicationState,
     rrule,
     parentRecurringId,
     occurrenceSlot,
@@ -2735,6 +2746,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.int,
         data['${effectivePrefix}time_to_complete_min'],
       ),
+      publicationState: $TasksTable.$converterpublicationState.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}publication_state'],
+        )!,
+      ),
       rrule: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}rrule'],
@@ -2839,6 +2856,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
       const EnumNameConverter<TaskKind>(TaskKind.values);
   static JsonTypeConverter2<TaskKind?, String?, String?> $converterkindn =
       JsonTypeConverter2.asNullable($converterkind);
+  static JsonTypeConverter2<PublicationState, String, String>
+  $converterpublicationState = const EnumNameConverter<PublicationState>(
+    PublicationState.values,
+  );
   static JsonTypeConverter2<MeetingProvider, String, String>
   $convertermeetingProvider = const EnumNameConverter<MeetingProvider>(
     MeetingProvider.values,
@@ -2869,6 +2890,20 @@ class Task extends DataClass implements Insertable<Task> {
   final DateTime? dueDate;
   final DateTime? completedAt;
   final int? timeToCompleteMin;
+
+  /// §4.1a draft vs released. **Everything starts as a draft** — nothing is born
+  /// committed — except an incoming Google invitation, which arrives released
+  /// because it is already in your world and you owe a response (§4.1b-i).
+  ///
+  /// Drafts sync to your other devices but not to Google, and are excluded from
+  /// reporting: present in the ledger, not moving the books.
+  ///
+  /// The column default is **draft** deliberately: if a code path ever forgets
+  /// to set this, the row is left out of scoring rather than silently counted.
+  /// Understating is a recoverable mistake; inflating someone's integrity score
+  /// without their say-so is not. (Rows predating this column are set to
+  /// `released` by the v12 migration — they were already being counted.)
+  final PublicationState publicationState;
   final String? rrule;
   final String? parentRecurringId;
 
@@ -2912,6 +2947,7 @@ class Task extends DataClass implements Insertable<Task> {
     this.dueDate,
     this.completedAt,
     this.timeToCompleteMin,
+    required this.publicationState,
     this.rrule,
     this.parentRecurringId,
     this.occurrenceSlot,
@@ -2973,6 +3009,11 @@ class Task extends DataClass implements Insertable<Task> {
     }
     if (!nullToAbsent || timeToCompleteMin != null) {
       map['time_to_complete_min'] = Variable<int>(timeToCompleteMin);
+    }
+    {
+      map['publication_state'] = Variable<String>(
+        $TasksTable.$converterpublicationState.toSql(publicationState),
+      );
     }
     if (!nullToAbsent || rrule != null) {
       map['rrule'] = Variable<String>(rrule);
@@ -3071,6 +3112,7 @@ class Task extends DataClass implements Insertable<Task> {
       timeToCompleteMin: timeToCompleteMin == null && nullToAbsent
           ? const Value.absent()
           : Value(timeToCompleteMin),
+      publicationState: Value(publicationState),
       rrule: rrule == null && nullToAbsent
           ? const Value.absent()
           : Value(rrule),
@@ -3148,6 +3190,9 @@ class Task extends DataClass implements Insertable<Task> {
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
       timeToCompleteMin: serializer.fromJson<int?>(json['timeToCompleteMin']),
+      publicationState: $TasksTable.$converterpublicationState.fromJson(
+        serializer.fromJson<String>(json['publicationState']),
+      ),
       rrule: serializer.fromJson<String?>(json['rrule']),
       parentRecurringId: serializer.fromJson<String?>(
         json['parentRecurringId'],
@@ -3198,6 +3243,9 @@ class Task extends DataClass implements Insertable<Task> {
       'dueDate': serializer.toJson<DateTime?>(dueDate),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
       'timeToCompleteMin': serializer.toJson<int?>(timeToCompleteMin),
+      'publicationState': serializer.toJson<String>(
+        $TasksTable.$converterpublicationState.toJson(publicationState),
+      ),
       'rrule': serializer.toJson<String?>(rrule),
       'parentRecurringId': serializer.toJson<String?>(parentRecurringId),
       'occurrenceSlot': serializer.toJson<DateTime?>(occurrenceSlot),
@@ -3240,6 +3288,7 @@ class Task extends DataClass implements Insertable<Task> {
     Value<DateTime?> dueDate = const Value.absent(),
     Value<DateTime?> completedAt = const Value.absent(),
     Value<int?> timeToCompleteMin = const Value.absent(),
+    PublicationState? publicationState,
     Value<String?> rrule = const Value.absent(),
     Value<String?> parentRecurringId = const Value.absent(),
     Value<DateTime?> occurrenceSlot = const Value.absent(),
@@ -3281,6 +3330,7 @@ class Task extends DataClass implements Insertable<Task> {
     timeToCompleteMin: timeToCompleteMin.present
         ? timeToCompleteMin.value
         : this.timeToCompleteMin,
+    publicationState: publicationState ?? this.publicationState,
     rrule: rrule.present ? rrule.value : this.rrule,
     parentRecurringId: parentRecurringId.present
         ? parentRecurringId.value
@@ -3342,6 +3392,9 @@ class Task extends DataClass implements Insertable<Task> {
       timeToCompleteMin: data.timeToCompleteMin.present
           ? data.timeToCompleteMin.value
           : this.timeToCompleteMin,
+      publicationState: data.publicationState.present
+          ? data.publicationState.value
+          : this.publicationState,
       rrule: data.rrule.present ? data.rrule.value : this.rrule,
       parentRecurringId: data.parentRecurringId.present
           ? data.parentRecurringId.value
@@ -3406,6 +3459,7 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('dueDate: $dueDate, ')
           ..write('completedAt: $completedAt, ')
           ..write('timeToCompleteMin: $timeToCompleteMin, ')
+          ..write('publicationState: $publicationState, ')
           ..write('rrule: $rrule, ')
           ..write('parentRecurringId: $parentRecurringId, ')
           ..write('occurrenceSlot: $occurrenceSlot, ')
@@ -3446,6 +3500,7 @@ class Task extends DataClass implements Insertable<Task> {
     dueDate,
     completedAt,
     timeToCompleteMin,
+    publicationState,
     rrule,
     parentRecurringId,
     occurrenceSlot,
@@ -3485,6 +3540,7 @@ class Task extends DataClass implements Insertable<Task> {
           other.dueDate == this.dueDate &&
           other.completedAt == this.completedAt &&
           other.timeToCompleteMin == this.timeToCompleteMin &&
+          other.publicationState == this.publicationState &&
           other.rrule == this.rrule &&
           other.parentRecurringId == this.parentRecurringId &&
           other.occurrenceSlot == this.occurrenceSlot &&
@@ -3522,6 +3578,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<DateTime?> dueDate;
   final Value<DateTime?> completedAt;
   final Value<int?> timeToCompleteMin;
+  final Value<PublicationState> publicationState;
   final Value<String?> rrule;
   final Value<String?> parentRecurringId;
   final Value<DateTime?> occurrenceSlot;
@@ -3558,6 +3615,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.dueDate = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.timeToCompleteMin = const Value.absent(),
+    this.publicationState = const Value.absent(),
     this.rrule = const Value.absent(),
     this.parentRecurringId = const Value.absent(),
     this.occurrenceSlot = const Value.absent(),
@@ -3595,6 +3653,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.dueDate = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.timeToCompleteMin = const Value.absent(),
+    this.publicationState = const Value.absent(),
     this.rrule = const Value.absent(),
     this.parentRecurringId = const Value.absent(),
     this.occurrenceSlot = const Value.absent(),
@@ -3635,6 +3694,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<DateTime>? dueDate,
     Expression<DateTime>? completedAt,
     Expression<int>? timeToCompleteMin,
+    Expression<String>? publicationState,
     Expression<String>? rrule,
     Expression<String>? parentRecurringId,
     Expression<DateTime>? occurrenceSlot,
@@ -3673,6 +3733,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (dueDate != null) 'due_date': dueDate,
       if (completedAt != null) 'completed_at': completedAt,
       if (timeToCompleteMin != null) 'time_to_complete_min': timeToCompleteMin,
+      if (publicationState != null) 'publication_state': publicationState,
       if (rrule != null) 'rrule': rrule,
       if (parentRecurringId != null) 'parent_recurring_id': parentRecurringId,
       if (occurrenceSlot != null) 'occurrence_slot': occurrenceSlot,
@@ -3712,6 +3773,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<DateTime?>? dueDate,
     Value<DateTime?>? completedAt,
     Value<int?>? timeToCompleteMin,
+    Value<PublicationState>? publicationState,
     Value<String?>? rrule,
     Value<String?>? parentRecurringId,
     Value<DateTime?>? occurrenceSlot,
@@ -3749,6 +3811,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       dueDate: dueDate ?? this.dueDate,
       completedAt: completedAt ?? this.completedAt,
       timeToCompleteMin: timeToCompleteMin ?? this.timeToCompleteMin,
+      publicationState: publicationState ?? this.publicationState,
       rrule: rrule ?? this.rrule,
       parentRecurringId: parentRecurringId ?? this.parentRecurringId,
       occurrenceSlot: occurrenceSlot ?? this.occurrenceSlot,
@@ -3821,6 +3884,11 @@ class TasksCompanion extends UpdateCompanion<Task> {
     }
     if (timeToCompleteMin.present) {
       map['time_to_complete_min'] = Variable<int>(timeToCompleteMin.value);
+    }
+    if (publicationState.present) {
+      map['publication_state'] = Variable<String>(
+        $TasksTable.$converterpublicationState.toSql(publicationState.value),
+      );
     }
     if (rrule.present) {
       map['rrule'] = Variable<String>(rrule.value);
@@ -3913,6 +3981,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('dueDate: $dueDate, ')
           ..write('completedAt: $completedAt, ')
           ..write('timeToCompleteMin: $timeToCompleteMin, ')
+          ..write('publicationState: $publicationState, ')
           ..write('rrule: $rrule, ')
           ..write('parentRecurringId: $parentRecurringId, ')
           ..write('occurrenceSlot: $occurrenceSlot, ')
@@ -4294,6 +4363,16 @@ class $TaskTransitionsTable extends TaskTransitions
     ),
   );
   @override
+  late final GeneratedColumnWithTypeConverter<LedgerEventKind, String> kind =
+      GeneratedColumn<String>(
+        'kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: Constant('statusChange'),
+      ).withConverter<LedgerEventKind>($TaskTransitionsTable.$converterkind);
+  @override
   late final GeneratedColumnWithTypeConverter<TaskStatus?, String> fromStatus =
       GeneratedColumn<String>(
         'from_status',
@@ -4311,6 +4390,57 @@ class $TaskTransitionsTable extends TaskTransitions
         type: DriftSqlType.string,
         requiredDuringInsert: true,
       ).withConverter<TaskStatus>($TaskTransitionsTable.$convertertoStatus);
+  static const VerificationMeta _areaIdMeta = const VerificationMeta('areaId');
+  @override
+  late final GeneratedColumn<String> areaId = GeneratedColumn<String>(
+    'area_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fromAreaIdMeta = const VerificationMeta(
+    'fromAreaId',
+  );
+  @override
+  late final GeneratedColumn<String> fromAreaId = GeneratedColumn<String>(
+    'from_area_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleSnapshotMeta = const VerificationMeta(
+    'titleSnapshot',
+  );
+  @override
+  late final GeneratedColumn<String> titleSnapshot = GeneratedColumn<String>(
+    'title_snapshot',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _atMeta = const VerificationMeta('at');
   @override
   late final GeneratedColumn<DateTime> at = GeneratedColumn<DateTime>(
@@ -4333,8 +4463,14 @@ class $TaskTransitionsTable extends TaskTransitions
   List<GeneratedColumn> get $columns => [
     id,
     taskId,
+    kind,
     fromStatus,
     toStatus,
+    areaId,
+    fromAreaId,
+    titleSnapshot,
+    deviceId,
+    reason,
     at,
     note,
   ];
@@ -4362,6 +4498,42 @@ class $TaskTransitionsTable extends TaskTransitions
       );
     } else if (isInserting) {
       context.missing(_taskIdMeta);
+    }
+    if (data.containsKey('area_id')) {
+      context.handle(
+        _areaIdMeta,
+        areaId.isAcceptableOrUnknown(data['area_id']!, _areaIdMeta),
+      );
+    }
+    if (data.containsKey('from_area_id')) {
+      context.handle(
+        _fromAreaIdMeta,
+        fromAreaId.isAcceptableOrUnknown(
+          data['from_area_id']!,
+          _fromAreaIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('title_snapshot')) {
+      context.handle(
+        _titleSnapshotMeta,
+        titleSnapshot.isAcceptableOrUnknown(
+          data['title_snapshot']!,
+          _titleSnapshotMeta,
+        ),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
     }
     if (data.containsKey('at')) {
       context.handle(_atMeta, at.isAcceptableOrUnknown(data['at']!, _atMeta));
@@ -4391,6 +4563,12 @@ class $TaskTransitionsTable extends TaskTransitions
         DriftSqlType.string,
         data['${effectivePrefix}task_id'],
       )!,
+      kind: $TaskTransitionsTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
       fromStatus: $TaskTransitionsTable.$converterfromStatusn.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -4402,6 +4580,26 @@ class $TaskTransitionsTable extends TaskTransitions
           DriftSqlType.string,
           data['${effectivePrefix}to_status'],
         )!,
+      ),
+      areaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}area_id'],
+      ),
+      fromAreaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}from_area_id'],
+      ),
+      titleSnapshot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title_snapshot'],
+      ),
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
       ),
       at: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
@@ -4419,6 +4617,8 @@ class $TaskTransitionsTable extends TaskTransitions
     return $TaskTransitionsTable(attachedDatabase, alias);
   }
 
+  static JsonTypeConverter2<LedgerEventKind, String, String> $converterkind =
+      const EnumNameConverter<LedgerEventKind>(LedgerEventKind.values);
   static JsonTypeConverter2<TaskStatus, String, String> $converterfromStatus =
       const EnumNameConverter<TaskStatus>(TaskStatus.values);
   static JsonTypeConverter2<TaskStatus?, String?, String?>
@@ -4430,15 +4630,53 @@ class $TaskTransitionsTable extends TaskTransitions
 class TaskTransition extends DataClass implements Insertable<TaskTransition> {
   final String id;
   final String taskId;
+
+  /// What this entry records — a status move, or creation / release / deletion
+  /// / correction. Defaults to `statusChange` so pre-existing rows read
+  /// correctly.
+  final LedgerEventKind kind;
+
+  /// The status **in force after this entry**. For a `statusChange` that is the
+  /// state moved into; for `released`, `deleted` or `corrected` the lifecycle
+  /// did not move, so it records the status still standing at that moment.
+  ///
+  /// Kept non-nullable on purpose: making it nullable would mean rewriting the
+  /// table on live data via Drift's experimental `TableMigration`, and always
+  /// recording the status in force is informative rather than misleading.
   final TaskStatus? fromStatus;
   final TaskStatus toStatus;
+
+  /// The area in force **at this moment** — after the change, for a correction.
+  final String? areaId;
+
+  /// For `corrected`: the area it was moved *from*, so the adjustment is legible
+  /// on its own ("Health → Entertainment").
+  final String? fromAreaId;
+
+  /// The title as it read then, so another device can report on this entry
+  /// without holding the task row.
+  final String? titleSnapshot;
+
+  /// Which device witnessed it. Provenance survives merging.
+  final String? deviceId;
+
+  /// Optional, user-supplied, never required and never scored — kept because
+  /// noticing *"I keep filing entertainment under health"* is worth learning
+  /// from (§4.4). Shown back only to its author.
+  final String? reason;
   final DateTime at;
   final String? note;
   const TaskTransition({
     required this.id,
     required this.taskId,
+    required this.kind,
     this.fromStatus,
     required this.toStatus,
+    this.areaId,
+    this.fromAreaId,
+    this.titleSnapshot,
+    this.deviceId,
+    this.reason,
     required this.at,
     this.note,
   });
@@ -4447,6 +4685,11 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['task_id'] = Variable<String>(taskId);
+    {
+      map['kind'] = Variable<String>(
+        $TaskTransitionsTable.$converterkind.toSql(kind),
+      );
+    }
     if (!nullToAbsent || fromStatus != null) {
       map['from_status'] = Variable<String>(
         $TaskTransitionsTable.$converterfromStatusn.toSql(fromStatus),
@@ -4456,6 +4699,21 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
       map['to_status'] = Variable<String>(
         $TaskTransitionsTable.$convertertoStatus.toSql(toStatus),
       );
+    }
+    if (!nullToAbsent || areaId != null) {
+      map['area_id'] = Variable<String>(areaId);
+    }
+    if (!nullToAbsent || fromAreaId != null) {
+      map['from_area_id'] = Variable<String>(fromAreaId);
+    }
+    if (!nullToAbsent || titleSnapshot != null) {
+      map['title_snapshot'] = Variable<String>(titleSnapshot);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
     }
     map['at'] = Variable<DateTime>(at);
     if (!nullToAbsent || note != null) {
@@ -4468,10 +4726,26 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
     return TaskTransitionsCompanion(
       id: Value(id),
       taskId: Value(taskId),
+      kind: Value(kind),
       fromStatus: fromStatus == null && nullToAbsent
           ? const Value.absent()
           : Value(fromStatus),
       toStatus: Value(toStatus),
+      areaId: areaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(areaId),
+      fromAreaId: fromAreaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fromAreaId),
+      titleSnapshot: titleSnapshot == null && nullToAbsent
+          ? const Value.absent()
+          : Value(titleSnapshot),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
       at: Value(at),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
     );
@@ -4485,12 +4759,20 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
     return TaskTransition(
       id: serializer.fromJson<String>(json['id']),
       taskId: serializer.fromJson<String>(json['taskId']),
+      kind: $TaskTransitionsTable.$converterkind.fromJson(
+        serializer.fromJson<String>(json['kind']),
+      ),
       fromStatus: $TaskTransitionsTable.$converterfromStatusn.fromJson(
         serializer.fromJson<String?>(json['fromStatus']),
       ),
       toStatus: $TaskTransitionsTable.$convertertoStatus.fromJson(
         serializer.fromJson<String>(json['toStatus']),
       ),
+      areaId: serializer.fromJson<String?>(json['areaId']),
+      fromAreaId: serializer.fromJson<String?>(json['fromAreaId']),
+      titleSnapshot: serializer.fromJson<String?>(json['titleSnapshot']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
+      reason: serializer.fromJson<String?>(json['reason']),
       at: serializer.fromJson<DateTime>(json['at']),
       note: serializer.fromJson<String?>(json['note']),
     );
@@ -4501,12 +4783,20 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'taskId': serializer.toJson<String>(taskId),
+      'kind': serializer.toJson<String>(
+        $TaskTransitionsTable.$converterkind.toJson(kind),
+      ),
       'fromStatus': serializer.toJson<String?>(
         $TaskTransitionsTable.$converterfromStatusn.toJson(fromStatus),
       ),
       'toStatus': serializer.toJson<String>(
         $TaskTransitionsTable.$convertertoStatus.toJson(toStatus),
       ),
+      'areaId': serializer.toJson<String?>(areaId),
+      'fromAreaId': serializer.toJson<String?>(fromAreaId),
+      'titleSnapshot': serializer.toJson<String?>(titleSnapshot),
+      'deviceId': serializer.toJson<String?>(deviceId),
+      'reason': serializer.toJson<String?>(reason),
       'at': serializer.toJson<DateTime>(at),
       'note': serializer.toJson<String?>(note),
     };
@@ -4515,15 +4805,29 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
   TaskTransition copyWith({
     String? id,
     String? taskId,
+    LedgerEventKind? kind,
     Value<TaskStatus?> fromStatus = const Value.absent(),
     TaskStatus? toStatus,
+    Value<String?> areaId = const Value.absent(),
+    Value<String?> fromAreaId = const Value.absent(),
+    Value<String?> titleSnapshot = const Value.absent(),
+    Value<String?> deviceId = const Value.absent(),
+    Value<String?> reason = const Value.absent(),
     DateTime? at,
     Value<String?> note = const Value.absent(),
   }) => TaskTransition(
     id: id ?? this.id,
     taskId: taskId ?? this.taskId,
+    kind: kind ?? this.kind,
     fromStatus: fromStatus.present ? fromStatus.value : this.fromStatus,
     toStatus: toStatus ?? this.toStatus,
+    areaId: areaId.present ? areaId.value : this.areaId,
+    fromAreaId: fromAreaId.present ? fromAreaId.value : this.fromAreaId,
+    titleSnapshot: titleSnapshot.present
+        ? titleSnapshot.value
+        : this.titleSnapshot,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
+    reason: reason.present ? reason.value : this.reason,
     at: at ?? this.at,
     note: note.present ? note.value : this.note,
   );
@@ -4531,10 +4835,20 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
     return TaskTransition(
       id: data.id.present ? data.id.value : this.id,
       taskId: data.taskId.present ? data.taskId.value : this.taskId,
+      kind: data.kind.present ? data.kind.value : this.kind,
       fromStatus: data.fromStatus.present
           ? data.fromStatus.value
           : this.fromStatus,
       toStatus: data.toStatus.present ? data.toStatus.value : this.toStatus,
+      areaId: data.areaId.present ? data.areaId.value : this.areaId,
+      fromAreaId: data.fromAreaId.present
+          ? data.fromAreaId.value
+          : this.fromAreaId,
+      titleSnapshot: data.titleSnapshot.present
+          ? data.titleSnapshot.value
+          : this.titleSnapshot,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      reason: data.reason.present ? data.reason.value : this.reason,
       at: data.at.present ? data.at.value : this.at,
       note: data.note.present ? data.note.value : this.note,
     );
@@ -4545,8 +4859,14 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
     return (StringBuffer('TaskTransition(')
           ..write('id: $id, ')
           ..write('taskId: $taskId, ')
+          ..write('kind: $kind, ')
           ..write('fromStatus: $fromStatus, ')
           ..write('toStatus: $toStatus, ')
+          ..write('areaId: $areaId, ')
+          ..write('fromAreaId: $fromAreaId, ')
+          ..write('titleSnapshot: $titleSnapshot, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('reason: $reason, ')
           ..write('at: $at, ')
           ..write('note: $note')
           ..write(')'))
@@ -4554,15 +4874,34 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
   }
 
   @override
-  int get hashCode => Object.hash(id, taskId, fromStatus, toStatus, at, note);
+  int get hashCode => Object.hash(
+    id,
+    taskId,
+    kind,
+    fromStatus,
+    toStatus,
+    areaId,
+    fromAreaId,
+    titleSnapshot,
+    deviceId,
+    reason,
+    at,
+    note,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is TaskTransition &&
           other.id == this.id &&
           other.taskId == this.taskId &&
+          other.kind == this.kind &&
           other.fromStatus == this.fromStatus &&
           other.toStatus == this.toStatus &&
+          other.areaId == this.areaId &&
+          other.fromAreaId == this.fromAreaId &&
+          other.titleSnapshot == this.titleSnapshot &&
+          other.deviceId == this.deviceId &&
+          other.reason == this.reason &&
           other.at == this.at &&
           other.note == this.note);
 }
@@ -4570,16 +4909,28 @@ class TaskTransition extends DataClass implements Insertable<TaskTransition> {
 class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
   final Value<String> id;
   final Value<String> taskId;
+  final Value<LedgerEventKind> kind;
   final Value<TaskStatus?> fromStatus;
   final Value<TaskStatus> toStatus;
+  final Value<String?> areaId;
+  final Value<String?> fromAreaId;
+  final Value<String?> titleSnapshot;
+  final Value<String?> deviceId;
+  final Value<String?> reason;
   final Value<DateTime> at;
   final Value<String?> note;
   final Value<int> rowid;
   const TaskTransitionsCompanion({
     this.id = const Value.absent(),
     this.taskId = const Value.absent(),
+    this.kind = const Value.absent(),
     this.fromStatus = const Value.absent(),
     this.toStatus = const Value.absent(),
+    this.areaId = const Value.absent(),
+    this.fromAreaId = const Value.absent(),
+    this.titleSnapshot = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.reason = const Value.absent(),
     this.at = const Value.absent(),
     this.note = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -4587,8 +4938,14 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
   TaskTransitionsCompanion.insert({
     required String id,
     required String taskId,
+    this.kind = const Value.absent(),
     this.fromStatus = const Value.absent(),
     required TaskStatus toStatus,
+    this.areaId = const Value.absent(),
+    this.fromAreaId = const Value.absent(),
+    this.titleSnapshot = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.reason = const Value.absent(),
     required DateTime at,
     this.note = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -4599,8 +4956,14 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
   static Insertable<TaskTransition> custom({
     Expression<String>? id,
     Expression<String>? taskId,
+    Expression<String>? kind,
     Expression<String>? fromStatus,
     Expression<String>? toStatus,
+    Expression<String>? areaId,
+    Expression<String>? fromAreaId,
+    Expression<String>? titleSnapshot,
+    Expression<String>? deviceId,
+    Expression<String>? reason,
     Expression<DateTime>? at,
     Expression<String>? note,
     Expression<int>? rowid,
@@ -4608,8 +4971,14 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (taskId != null) 'task_id': taskId,
+      if (kind != null) 'kind': kind,
       if (fromStatus != null) 'from_status': fromStatus,
       if (toStatus != null) 'to_status': toStatus,
+      if (areaId != null) 'area_id': areaId,
+      if (fromAreaId != null) 'from_area_id': fromAreaId,
+      if (titleSnapshot != null) 'title_snapshot': titleSnapshot,
+      if (deviceId != null) 'device_id': deviceId,
+      if (reason != null) 'reason': reason,
       if (at != null) 'at': at,
       if (note != null) 'note': note,
       if (rowid != null) 'rowid': rowid,
@@ -4619,8 +4988,14 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
   TaskTransitionsCompanion copyWith({
     Value<String>? id,
     Value<String>? taskId,
+    Value<LedgerEventKind>? kind,
     Value<TaskStatus?>? fromStatus,
     Value<TaskStatus>? toStatus,
+    Value<String?>? areaId,
+    Value<String?>? fromAreaId,
+    Value<String?>? titleSnapshot,
+    Value<String?>? deviceId,
+    Value<String?>? reason,
     Value<DateTime>? at,
     Value<String?>? note,
     Value<int>? rowid,
@@ -4628,8 +5003,14 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
     return TaskTransitionsCompanion(
       id: id ?? this.id,
       taskId: taskId ?? this.taskId,
+      kind: kind ?? this.kind,
       fromStatus: fromStatus ?? this.fromStatus,
       toStatus: toStatus ?? this.toStatus,
+      areaId: areaId ?? this.areaId,
+      fromAreaId: fromAreaId ?? this.fromAreaId,
+      titleSnapshot: titleSnapshot ?? this.titleSnapshot,
+      deviceId: deviceId ?? this.deviceId,
+      reason: reason ?? this.reason,
       at: at ?? this.at,
       note: note ?? this.note,
       rowid: rowid ?? this.rowid,
@@ -4645,6 +5026,11 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
     if (taskId.present) {
       map['task_id'] = Variable<String>(taskId.value);
     }
+    if (kind.present) {
+      map['kind'] = Variable<String>(
+        $TaskTransitionsTable.$converterkind.toSql(kind.value),
+      );
+    }
     if (fromStatus.present) {
       map['from_status'] = Variable<String>(
         $TaskTransitionsTable.$converterfromStatusn.toSql(fromStatus.value),
@@ -4654,6 +5040,21 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
       map['to_status'] = Variable<String>(
         $TaskTransitionsTable.$convertertoStatus.toSql(toStatus.value),
       );
+    }
+    if (areaId.present) {
+      map['area_id'] = Variable<String>(areaId.value);
+    }
+    if (fromAreaId.present) {
+      map['from_area_id'] = Variable<String>(fromAreaId.value);
+    }
+    if (titleSnapshot.present) {
+      map['title_snapshot'] = Variable<String>(titleSnapshot.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
     }
     if (at.present) {
       map['at'] = Variable<DateTime>(at.value);
@@ -4672,8 +5073,14 @@ class TaskTransitionsCompanion extends UpdateCompanion<TaskTransition> {
     return (StringBuffer('TaskTransitionsCompanion(')
           ..write('id: $id, ')
           ..write('taskId: $taskId, ')
+          ..write('kind: $kind, ')
           ..write('fromStatus: $fromStatus, ')
           ..write('toStatus: $toStatus, ')
+          ..write('areaId: $areaId, ')
+          ..write('fromAreaId: $fromAreaId, ')
+          ..write('titleSnapshot: $titleSnapshot, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('reason: $reason, ')
           ..write('at: $at, ')
           ..write('note: $note, ')
           ..write('rowid: $rowid')
@@ -9673,6 +10080,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<DateTime?> dueDate,
       Value<DateTime?> completedAt,
       Value<int?> timeToCompleteMin,
+      Value<PublicationState> publicationState,
       Value<String?> rrule,
       Value<String?> parentRecurringId,
       Value<DateTime?> occurrenceSlot,
@@ -9711,6 +10119,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime?> dueDate,
       Value<DateTime?> completedAt,
       Value<int?> timeToCompleteMin,
+      Value<PublicationState> publicationState,
       Value<String?> rrule,
       Value<String?> parentRecurringId,
       Value<DateTime?> occurrenceSlot,
@@ -9865,6 +10274,12 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
   ColumnFilters<int> get timeToCompleteMin => $composableBuilder(
     column: $table.timeToCompleteMin,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PublicationState, PublicationState, String>
+  get publicationState => $composableBuilder(
+    column: $table.publicationState,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<String> get rrule => $composableBuilder(
@@ -10118,6 +10533,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get publicationState => $composableBuilder(
+    column: $table.publicationState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get rrule => $composableBuilder(
     column: $table.rrule,
     builder: (column) => ColumnOrderings(column),
@@ -10301,6 +10721,12 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<int> get timeToCompleteMin => $composableBuilder(
     column: $table.timeToCompleteMin,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<PublicationState, String>
+  get publicationState => $composableBuilder(
+    column: $table.publicationState,
     builder: (column) => column,
   );
 
@@ -10512,6 +10938,7 @@ class $$TasksTableTableManager
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<int?> timeToCompleteMin = const Value.absent(),
+                Value<PublicationState> publicationState = const Value.absent(),
                 Value<String?> rrule = const Value.absent(),
                 Value<String?> parentRecurringId = const Value.absent(),
                 Value<DateTime?> occurrenceSlot = const Value.absent(),
@@ -10548,6 +10975,7 @@ class $$TasksTableTableManager
                 dueDate: dueDate,
                 completedAt: completedAt,
                 timeToCompleteMin: timeToCompleteMin,
+                publicationState: publicationState,
                 rrule: rrule,
                 parentRecurringId: parentRecurringId,
                 occurrenceSlot: occurrenceSlot,
@@ -10586,6 +11014,7 @@ class $$TasksTableTableManager
                 Value<DateTime?> dueDate = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<int?> timeToCompleteMin = const Value.absent(),
+                Value<PublicationState> publicationState = const Value.absent(),
                 Value<String?> rrule = const Value.absent(),
                 Value<String?> parentRecurringId = const Value.absent(),
                 Value<DateTime?> occurrenceSlot = const Value.absent(),
@@ -10622,6 +11051,7 @@ class $$TasksTableTableManager
                 dueDate: dueDate,
                 completedAt: completedAt,
                 timeToCompleteMin: timeToCompleteMin,
+                publicationState: publicationState,
                 rrule: rrule,
                 parentRecurringId: parentRecurringId,
                 occurrenceSlot: occurrenceSlot,
@@ -11081,8 +11511,14 @@ typedef $$TaskTransitionsTableCreateCompanionBuilder =
     TaskTransitionsCompanion Function({
       required String id,
       required String taskId,
+      Value<LedgerEventKind> kind,
       Value<TaskStatus?> fromStatus,
       required TaskStatus toStatus,
+      Value<String?> areaId,
+      Value<String?> fromAreaId,
+      Value<String?> titleSnapshot,
+      Value<String?> deviceId,
+      Value<String?> reason,
       required DateTime at,
       Value<String?> note,
       Value<int> rowid,
@@ -11091,8 +11527,14 @@ typedef $$TaskTransitionsTableUpdateCompanionBuilder =
     TaskTransitionsCompanion Function({
       Value<String> id,
       Value<String> taskId,
+      Value<LedgerEventKind> kind,
       Value<TaskStatus?> fromStatus,
       Value<TaskStatus> toStatus,
+      Value<String?> areaId,
+      Value<String?> fromAreaId,
+      Value<String?> titleSnapshot,
+      Value<String?> deviceId,
+      Value<String?> reason,
       Value<DateTime> at,
       Value<String?> note,
       Value<int> rowid,
@@ -11140,6 +11582,12 @@ class $$TaskTransitionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<LedgerEventKind, LedgerEventKind, String>
+  get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   ColumnWithTypeConverterFilters<TaskStatus?, TaskStatus, String>
   get fromStatus => $composableBuilder(
     column: $table.fromStatus,
@@ -11151,6 +11599,31 @@ class $$TaskTransitionsTableFilterComposer
         column: $table.toStatus,
         builder: (column) => ColumnWithTypeConverterFilters(column),
       );
+
+  ColumnFilters<String> get areaId => $composableBuilder(
+    column: $table.areaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fromAreaId => $composableBuilder(
+    column: $table.fromAreaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get titleSnapshot => $composableBuilder(
+    column: $table.titleSnapshot,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get at => $composableBuilder(
     column: $table.at,
@@ -11200,6 +11673,11 @@ class $$TaskTransitionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get fromStatus => $composableBuilder(
     column: $table.fromStatus,
     builder: (column) => ColumnOrderings(column),
@@ -11207,6 +11685,31 @@ class $$TaskTransitionsTableOrderingComposer
 
   ColumnOrderings<String> get toStatus => $composableBuilder(
     column: $table.toStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get areaId => $composableBuilder(
+    column: $table.areaId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fromAreaId => $composableBuilder(
+    column: $table.fromAreaId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get titleSnapshot => $composableBuilder(
+    column: $table.titleSnapshot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -11256,6 +11759,9 @@ class $$TaskTransitionsTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumnWithTypeConverter<LedgerEventKind, String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
   GeneratedColumnWithTypeConverter<TaskStatus?, String> get fromStatus =>
       $composableBuilder(
         column: $table.fromStatus,
@@ -11264,6 +11770,25 @@ class $$TaskTransitionsTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<TaskStatus, String> get toStatus =>
       $composableBuilder(column: $table.toStatus, builder: (column) => column);
+
+  GeneratedColumn<String> get areaId =>
+      $composableBuilder(column: $table.areaId, builder: (column) => column);
+
+  GeneratedColumn<String> get fromAreaId => $composableBuilder(
+    column: $table.fromAreaId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get titleSnapshot => $composableBuilder(
+    column: $table.titleSnapshot,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
 
   GeneratedColumn<DateTime> get at =>
       $composableBuilder(column: $table.at, builder: (column) => column);
@@ -11327,16 +11852,28 @@ class $$TaskTransitionsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> taskId = const Value.absent(),
+                Value<LedgerEventKind> kind = const Value.absent(),
                 Value<TaskStatus?> fromStatus = const Value.absent(),
                 Value<TaskStatus> toStatus = const Value.absent(),
+                Value<String?> areaId = const Value.absent(),
+                Value<String?> fromAreaId = const Value.absent(),
+                Value<String?> titleSnapshot = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
                 Value<DateTime> at = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TaskTransitionsCompanion(
                 id: id,
                 taskId: taskId,
+                kind: kind,
                 fromStatus: fromStatus,
                 toStatus: toStatus,
+                areaId: areaId,
+                fromAreaId: fromAreaId,
+                titleSnapshot: titleSnapshot,
+                deviceId: deviceId,
+                reason: reason,
                 at: at,
                 note: note,
                 rowid: rowid,
@@ -11345,16 +11882,28 @@ class $$TaskTransitionsTableTableManager
               ({
                 required String id,
                 required String taskId,
+                Value<LedgerEventKind> kind = const Value.absent(),
                 Value<TaskStatus?> fromStatus = const Value.absent(),
                 required TaskStatus toStatus,
+                Value<String?> areaId = const Value.absent(),
+                Value<String?> fromAreaId = const Value.absent(),
+                Value<String?> titleSnapshot = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
                 required DateTime at,
                 Value<String?> note = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TaskTransitionsCompanion.insert(
                 id: id,
                 taskId: taskId,
+                kind: kind,
                 fromStatus: fromStatus,
                 toStatus: toStatus,
+                areaId: areaId,
+                fromAreaId: fromAreaId,
+                titleSnapshot: titleSnapshot,
+                deviceId: deviceId,
+                reason: reason,
                 at: at,
                 note: note,
                 rowid: rowid,

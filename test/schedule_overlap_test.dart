@@ -20,6 +20,9 @@ void main() {
     durationMin: mins,
     geofenceEnabled: false,
     priority: 0,
+    // Overlap detection is about time, not commitment — but these stand in for
+    // real, released commitments.
+    publicationState: PublicationState.released,
     source: TaskSource.manual,
     createdAt: start,
     updatedAt: start,

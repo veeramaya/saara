@@ -8,6 +8,37 @@ library;
 /// mapping, and report grouping.
 enum BaseCategory { health, family, finance, work, relationships, custom }
 
+/// §4.1a whether a commitment has been *given*. Orthogonal to [TaskStatus],
+/// which tracks what happened to it afterwards.
+///
+/// A **draft** is thinking out loud: it travels with the ledger to your other
+/// devices, but it is not pushed to Google and it does not count in reporting.
+/// **Releasing is giving your word** — from then on it syncs everywhere, counts,
+/// and its past cannot be deleted (only its future).
+enum PublicationState { draft, released }
+
+/// §3.3 what a ledger entry records. The ledger is append-only: entries are
+/// never edited or removed, so a mistake is answered with a `corrected` entry
+/// rather than a rewrite.
+enum LedgerEventKind {
+  /// The task or occurrence came into existence (still a draft).
+  created,
+
+  /// The moment the user gave their word — worth recording in its own right,
+  /// since the gap between committing and acting is itself informative.
+  released,
+
+  /// A move through the §4 lifecycle: started, completed, missed, rejected…
+  statusChange,
+
+  /// Removed going forward. The past it already accrued stays (§4.2).
+  deleted,
+
+  /// A correction to an earlier classification — an adjusting entry, never an
+  /// erasure (§4.3).
+  corrected,
+}
+
 /// §3.2 MeasurableResult.metric_type
 enum MetricType {
   count,

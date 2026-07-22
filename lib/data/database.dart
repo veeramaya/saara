@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:drift/drift.dart';
 
 import '../domain/enums.dart';
@@ -49,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -107,6 +109,38 @@ class AppDatabase extends _$AppDatabase {
           'WHERE parent_recurring_id IS NOT NULL',
         );
       }
+      // v12: the ledger (docs/LEDGER_DESIGN.md). Publication state on tasks,
+      // and self-contained ledger entries that carry provenance.
+      if (from < 12) {
+        await m.addColumn(tasks, tasks.publicationState);
+        // Everything that already exists was being counted, so it was in effect
+        // released. Saying so explicitly is more honest than leaving them to
+        // the column default, which is `draft`.
+        await customStatement("UPDATE tasks SET publication_state = 'released'");
+
+        for (final c in [
+          taskTransitions.kind,
+          taskTransitions.areaId,
+          taskTransitions.fromAreaId,
+          taskTransitions.titleSnapshot,
+          taskTransitions.deviceId,
+          taskTransitions.reason,
+        ]) {
+          await m.addColumn(taskTransitions, c);
+        }
+        // Backfill provenance. This is safe *only* because no cross-device merge
+        // has ever run: every entry in this ledger was necessarily recorded by
+        // this device. After the first merge it would be guesswork.
+        final deviceId = await _ensureDeviceId();
+        await customStatement(
+          'UPDATE task_transitions SET '
+          "  kind = 'statusChange', "
+          '  device_id = ?, '
+          '  area_id = (SELECT t.area_id FROM tasks t WHERE t.id = task_id), '
+          '  title_snapshot = (SELECT t.title FROM tasks t WHERE t.id = task_id)',
+          [deviceId],
+        );
+      }
     },
     beforeOpen: (details) async {
       // Enforce FK constraints (integrity ledger relies on them, §3.3).
@@ -118,6 +152,33 @@ class AppDatabase extends _$AppDatabase {
       }
     },
   );
+
+  static const _deviceIdKey = 'device_id';
+
+  /// This device's stable id, minted once on first need and kept in `Settings`.
+  ///
+  /// Every ledger entry carries it, so provenance survives a merge — you can
+  /// always tell which device witnessed a thing. It is a random local id, not a
+  /// hardware or account identifier: it says *"this install"* and nothing about
+  /// who or where you are (§1.4).
+  Future<String> deviceId() => _ensureDeviceId();
+
+  Future<String> _ensureDeviceId() async {
+    final row = await (select(
+      settings,
+    )..where((s) => s.key.equals(_deviceIdKey))).getSingleOrNull();
+    final existing = row?.value;
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final rng = Random.secure();
+    final id = List<int>.generate(16, (_) => rng.nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    await into(settings).insertOnConflictUpdate(
+      SettingsCompanion.insert(key: _deviceIdKey, value: Value(id)),
+    );
+    return id;
+  }
 
   Future<void> _seedDefaultAreas() async {
     final now = DateTime.now();
