@@ -121,9 +121,37 @@ Scores derive from events, not from current rows.
   from your lists, **not from your record**.
 - Trash/restore, edits and re-assignment change the future, never the past.
 
-> **Product consequence, to be stated in the UI:** you cannot improve your score
-> by deleting evidence. That is the feature, and it should be visible, not a
-> silent surprise.
+### 4.1 Governing principle
+
+> **Saara measures the integrity of the records. Integrity itself belongs to the
+> user.** The app cannot manufacture it — only reflect faithfully what was
+> recorded. Its job is to be an honest recorder, not a policeman.
+
+Everything below follows from that. Saara does not obstruct, nag, or moralise;
+it declines to *forget on demand*, which is a different and smaller claim.
+
+### 4.2 Deletion policy
+
+The distinction is **whether anything actually happened**, not whether the row
+is convenient to remove:
+
+| What is deleted | Behaviour | Why |
+|---|---|---|
+| An **open** task — created, never started or disposed | Removed. No ledger events exist beyond its creation, so nothing is lost. **No score effect.** | Changing your mind about a plan you never acted on is ordinary housekeeping, not a broken commitment. |
+| A task **with history** — started, completed, missed, rejected | Soft-deleted and gone from your lists. Its events stand, and the deletion is itself recorded. **Score unaffected by the deletion.** | You did the thing, or you didn't. Removing the row afterwards doesn't unmake it. |
+
+This answers the obvious objection — *"I deleted it, why is it still counting
+against me?"* — cleanly: **it can only count against you if you actually missed
+it.** Delete a plan you never started and nothing happens at all.
+
+### 4.3 Creation events and abandoned plans
+
+Creation *is* recorded (§9.1), so a created-then-deleted open task leaves both a
+`created` and a `deleted` event. That is deliberate: the facts are preserved, but
+**reporting excludes a task deleted while still open** from "commitments made".
+
+Facts kept; interpretation fair. The record stays complete for anyone who later
+wants to look, without penalising legitimate planning changes.
 
 ---
 
@@ -219,13 +247,28 @@ Phase 1 stands alone and ships value even if 2–4 never happen.
 
 ---
 
-## 9. Open decisions
+## 9. Decisions (settled)
 
-1. **Is a task's creation an event?** Not needed for `completed / disposed`, but
-   required for "commitments made vs kept". Cheap now, awkward to add later.
-2. **Do captures travel?** Photos/audio/video are large. Proposal: excluded from
-   ledger files; included in a full Export. Media stays device-local.
-3. **Passphrase UX.** One passphrase for all ledger files, set once. Lose it and
-   the files are unreadable — same honesty as Reset local data.
-4. **Does the phone become equal, or stay a satellite?** With merge working,
-   equal. Worth confirming that is the intent.
+1. **Creation is an event.** Enables "commitments made vs kept", which is close
+   to Saara's purpose. Abandoned open plans are excluded at the *reporting*
+   layer, not by discarding the fact (§4.3).
+2. **Captures do not travel in ledger files.** Media stays on the device that
+   captured it. It can be carried manually in a full Export, so it is
+   *portable by effort, not by default*.
+   → Accepted trade-off: making media portable by default would mean central
+   storage, which contradicts "Realmaya holds nothing". Local media is the price
+   of that guarantee, and it is the right price.
+3. **One passphrase for ledger files**, set once. Lose it and the files are
+   unreadable — stated with the same bluntness as Reset local data.
+4. **Both devices are full equals.** With merge working there is no master and
+   no satellite; each holds the complete record as of its last sync.
+
+---
+
+## 10. Still open
+
+- **Device id generation** — random UUID on first run, stored in `Settings`, with
+  a user-visible friendly name ("Veera's desktop") so provenance is legible.
+- **Does the `deleted` event carry a reason?** Optional free text, or nothing.
+  Leaning nothing: prompting for a reason edges toward moralising, which §4.1
+  rules out.
