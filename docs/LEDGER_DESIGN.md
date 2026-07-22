@@ -93,6 +93,44 @@ per-device, so nothing is lost. This requires a `source` column on
 **Reference data** — areas, measurable-result definitions, and a task's current
 title/schedule. These are state, not history. Merged separately (§5.2).
 
+### 3.2a Granularity — the occurrence is the atom
+
+> **The atom is the individual task, or a single occurrence of an event. Never
+> the series.** Everything above it is a multiplier.
+
+As in accounting: the posting is the atom, and every statement above it is an
+aggregate of postings. You never post "the series" — you post each entry.
+
+This has one hard consequence: **no aggregate is ever authoritative.** Area
+totals, reliability, series statistics, the integrity wheel — all are folds over
+occurrence-level entries, computed on demand. Nothing is stored at the aggregate
+level as a source of truth, so nothing can drift out of step with the facts
+beneath it.
+
+#### Why classification must live on the occurrence
+
+The same recurring activity genuinely means different things on different days:
+
+> *Watching a movie* — recreation on Friday; a stress-buster under health after a
+> brutal week; time with your spouse on Sunday.
+
+One label for the whole series would be a convenient lie. The activity repeats;
+its **purpose does not**. So classification, like every other fact, attaches to
+the occurrence.
+
+The series carries only a **default**, inherited by occurrences generated after
+it. It is a generator, not an accounting unit.
+
+#### Changing a classification uses the Past–Present–Future scopes
+
+The same three scopes as delete and edit (§4.2), for the same reason:
+
+| Scope | Effect |
+|---|---|
+| **This occurrence** | Just this date. If it is in the past, it posts a **correction** (§4.3) rather than an edit |
+| **This and following** | Changes future occurrences and updates the series default |
+| **All** | Corrections for the ones that already happened, plain changes for those still ahead |
+
 ### 3.3 Entries must be self-contained
 
 A ledger entry carries the facts needed to interpret it, at the time it
@@ -423,10 +461,10 @@ Phase 1 stands alone and ships value even if 2–4 never happen.
   keeps the model simple and lets the user name it themselves; a reserved one
   makes the "time you never chose" report reliable across users. Leaning
   ordinary-but-seeded, so it can be renamed or deleted like any other.
-- **A recurring meeting you were invited to** generates many occurrences, each
-  needing a disposition. Does classifying the series classify every occurrence?
-  Almost certainly yes — but confirm before building, since it interacts with the
-  rule/occurrence split (§3).
+- **How is an unclassified occurrence reported?** It has no area, so it cannot
+  land in an area score. Counted in an "unclassified" bucket and excluded from
+  area figures until classified, presumably — but the honest default needs a call
+  (silently dropping it would overstate the areas that *are* classified).
 - **What replaces Delete on a Released task with history?** The action can't just
   vanish, or the UI looks broken. Leaning *"Hide from lists"* — the row leaves
   your views, the record stands. "Not a policeman" (§4.1) argues for letting
