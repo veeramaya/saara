@@ -595,9 +595,14 @@ class TaskDetailScreen extends ConsumerWidget {
             label: const Text('Mark in progress'),
             onPressed: () => run(() => service.beginWork(task)),
           ),
-        FilledButton.tonalIcon(
+        // Outlined, and phrased as an instruction. A tinted button with a tick
+        // reads as a *state* — "this is complete" — not an action, and next to
+        // a status chip saying "created" that is genuinely confusing. Only the
+        // natural next step (Start / Mark in progress) is filled; everything
+        // else here is an equal alternative.
+        OutlinedButton.icon(
           icon: const Icon(Icons.check),
-          label: const Text('Complete'),
+          label: const Text('Mark complete'),
           onPressed: () => _complete(context, ref, task),
         ),
         OutlinedButton.icon(
