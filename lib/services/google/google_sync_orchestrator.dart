@@ -113,6 +113,9 @@ class GoogleSyncOrchestrator {
           gcalCalendarId: Value(g.listId),
           gcalEtag: Value(g.updated),
           lastSyncedAt: Value(now),
+          // Arrives released: it is already in your world and you owe a
+          // response. Leaving it unanswered is not neutral (§4.1b-i).
+          publicationState: const Value(PublicationState.released),
           source: const Value(TaskSource.gcalSync),
           createdAt: now,
           updatedAt: now,
@@ -260,6 +263,8 @@ class GoogleSyncOrchestrator {
           gcalCalendarId: const Value('primary'),
           gcalEtag: Value(e.updated),
           lastSyncedAt: Value(now),
+          // Someone else put this on your calendar; you owe them an answer.
+          publicationState: const Value(PublicationState.released),
           source: const Value(TaskSource.gcalEvent),
           createdAt: now,
           updatedAt: now,

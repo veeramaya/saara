@@ -31,6 +31,9 @@ void main() {
         id: id,
         title: title,
         kind: Value(kind),
+        // These cover push queues and lifecycle, which only apply to
+        // commitments actually made — a draft is deliberately invisible to both.
+        publicationState: const Value(PublicationState.released),
         scheduledStart: Value(start),
         dueDate: Value(start),
         gcalEventId: Value(gcalId),
@@ -327,6 +330,7 @@ void main() {
         TasksCompanion.insert(
           id: 'tpl-walk',
           title: 'Morning walk',
+          publicationState: const Value(PublicationState.released),
           rrule: const Value('FREQ=DAILY'),
           scheduledStart: Value(at(5)),
           createdAt: now,

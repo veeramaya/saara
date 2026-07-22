@@ -250,6 +250,12 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
           ..where((t) => t.kind.isNull() | t.kind.equalsValue(TaskKind.task))
           // one-off only: no rule of its own, and not generated from one
           ..where((t) => t.rrule.isNull() & t.parentRecurringId.isNull())
+          // Drafts stay off Google (§4.1a). Google is where the outside world
+          // sees your calendar; half-formed thinking posted there is public
+          // before you meant it, and clutters a calendar others may share.
+          ..where(
+            (t) => t.publicationState.equalsValue(PublicationState.released),
+          )
           ..where((t) => t.status.isInValues(open)))
         .get();
   }
@@ -495,6 +501,10 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
             ..where((t) => t.deletedAt.isNull())
             ..where((t) => t.gcalEventId.isNull())
             ..where((t) => t.scheduledStart.isNotNull())
+            // Drafts stay off Google — see [tasksToPush].
+            ..where(
+              (t) => t.publicationState.equalsValue(PublicationState.released),
+            )
             ..where(
               (t) => t.kind.equalsValue(TaskKind.event) | _isRecurringRule(t),
             ))

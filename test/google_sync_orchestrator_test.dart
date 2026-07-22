@@ -42,6 +42,9 @@ void main() {
     String? parentRecurringId,
     String? gcalEventId,
     MeetingProvider? meetingProvider,
+    // Most of these tests are about things already committed to, so released is
+    // the useful default here; draft is exercised explicitly below.
+    PublicationState publicationState = PublicationState.released,
   }) => db.taskDao.insertTask(
     TasksCompanion.insert(
       id: id,
@@ -53,6 +56,7 @@ void main() {
       parentRecurringId: Value(parentRecurringId),
       gcalEventId: Value(gcalEventId),
       meetingProvider: Value(meetingProvider),
+      publicationState: Value(publicationState),
       createdAt: now,
       updatedAt: now,
     ),
@@ -108,6 +112,75 @@ void main() {
         google.tasks.length,
         afterFirst,
         reason: 'sync must be idempotent — this is how duplicates start',
+      );
+    });
+  });
+
+  group('drafts stay off Google', () {
+    test('a draft task is never pushed', () async {
+      await task(
+        't1',
+        title: 'Still thinking',
+        start: now,
+        publicationState: PublicationState.draft,
+      );
+
+      await sync.syncAll();
+
+      expect(
+        google.pushedTaskTitles,
+        isEmpty,
+        reason: 'half-formed thinking must not appear on a shared calendar',
+      );
+    });
+
+    test('a draft event is never pushed', () async {
+      await task(
+        'ev',
+        title: 'Maybe a workshop',
+        kind: TaskKind.event,
+        start: now,
+        publicationState: PublicationState.draft,
+      );
+
+      await sync.syncAll();
+
+      expect(google.pushedEventTitles, isEmpty);
+    });
+
+    test('releasing it later does push it', () async {
+      await task(
+        't1',
+        title: 'Still thinking',
+        start: now,
+        publicationState: PublicationState.draft,
+      );
+      await sync.syncAll();
+      expect(google.pushedTaskTitles, isEmpty);
+
+      await db.taskDao.setPublicationState('t1', PublicationState.released);
+      await sync.syncAll();
+
+      expect(google.pushedTaskTitles, ['Still thinking']);
+    });
+  });
+
+  group('invitations arrive released', () {
+    test('an incoming event counts — you owe a response', () async {
+      google.seedIncomingEvent(
+        title: 'Product review',
+        start: DateTime(2026, 7, 23, 15),
+      );
+
+      await sync.syncAll();
+
+      final imported = (await db.taskDao.allTasks()).firstWhere(
+        (t) => t.title == 'Product review',
+      );
+      expect(
+        imported.publicationState,
+        PublicationState.released,
+        reason: 'an unanswered invitation lacks your listening with others',
       );
     });
   });

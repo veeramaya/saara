@@ -155,6 +155,12 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   /// The image shown/saved: the OCR capture, else one attached from the phone.
   String? get _effectiveImage => widget.imagePath ?? _pickedImagePath;
 
+  /// Already committed to, so there is nothing left to release — the button
+  /// goes back to plain "Save". A commitment is never silently un-given: to
+  /// step back from one you dispose of it (§4), you don't demote it to a draft.
+  bool get _alreadyReleased =>
+      widget.editing?.publicationState == PublicationState.released;
+
   @override
   void initState() {
     super.initState();
@@ -725,9 +731,25 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
             ),
         ],
       ),
+      // §4.1c Releasing is giving your word, so the button says so. It is the
+      // same single tap Save was — the act is just named honestly. "Save as
+      // draft" sits beneath for thinking that isn't a commitment yet.
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.all(12),
-        child: FilledButton(onPressed: _save, child: const Text('Save')),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton(
+              onPressed: () => _save(release: true),
+              child: Text(_alreadyReleased ? 'Save' : 'Release'),
+            ),
+            if (!_alreadyReleased)
+              TextButton(
+                onPressed: () => _save(release: false),
+                child: const Text('Save as draft'),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1512,9 +1534,9 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   /// Wraps the save so a failure is *visible*. Previously any exception left
   /// the form open with no message — indistinguishable from "the button does
   /// nothing", which is how a save silently failed.
-  Future<void> _save() async {
+  Future<void> _save({required bool release}) async {
     try {
-      await _performSave();
+      await _performSave(release: release);
     } catch (e, st) {
       debugPrint('Saara save failed: $e\n$st');
       if (mounted) {
@@ -1528,7 +1550,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     }
   }
 
-  Future<void> _performSave() async {
+  Future<void> _performSave({required bool release}) async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(
@@ -1556,6 +1578,11 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         (isRecurring ? DateTime(now.year, now.month, now.day, 9) : null);
 
     if (widget.editing != null) {
+      // Releasing a draft you saved earlier — the commitment is made here, so
+      // it is recorded here.
+      if (release && !_alreadyReleased) {
+        await ref.read(taskServiceProvider).release(widget.editing!);
+      }
       await _saveEdit(widget.editing!, title, anchor, isEvent, now);
       return;
     }
@@ -1564,6 +1591,9 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       id: id,
       title: title,
       kind: Value(_kind),
+      publicationState: Value(
+        release ? PublicationState.released : PublicationState.draft,
+      ),
       attachmentImagePath: Value(_effectiveImage),
       documentLink: Value(
         _docLinkController.text.trim().isEmpty
@@ -1603,6 +1633,14 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       updatedAt: now,
     );
     await ref.read(taskDaoProvider).insertTask(companion);
+    // The ledger records both facts: that it came into existence, and — if you
+    // committed here — the moment you gave your word (§4.1d).
+    final saved = await ref.read(taskDaoProvider).findById(id);
+    if (saved != null) {
+      final service = ref.read(taskServiceProvider);
+      await service.recordCreated(saved);
+      if (release) await service.release(saved);
+    }
     await _applyGeofence(id);
 
     // Persist chosen participants as on-device contact refs (§3.3, §11).
