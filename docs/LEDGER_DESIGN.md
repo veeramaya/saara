@@ -152,7 +152,41 @@ meant it to be, and clutters a calendar other people may share.
 > thinking out loud should cost nothing — sketch a week, change your mind, throw
 > it away, and none of it touches your record.
 
-### 4.1b The moment of commitment is itself a fact
+### 4.1b Everything starts as Draft
+
+| Origin | Starts as | Why |
+|---|---|---|
+| Created by hand | **Draft**, releasable in the same step | Committing is a deliberate act, not a side effect of typing |
+| AI extraction, bulk/file import | **Draft** | Already a review queue — nothing has been agreed to yet |
+| **Incoming Google Calendar invitation** | **Draft** | *Someone else* put it on your calendar. It may not be in your plan at all |
+| Incoming Google Task | **Draft** | Same |
+
+The invitation case is the one that could not be expressed before. A meeting
+landing on your calendar is **not** a commitment you made — it is a proposal.
+Releasing it is you saying *"yes, this is mine."* Until then Saara shows it,
+because you need to see it, but it does not count for or against you.
+
+That distinction — **what is on my calendar** versus **what I have committed
+to** — is real in life and was invisible in the app.
+
+### 4.1c The friction is the point (taken with a pinch of salt)
+
+Requiring a release step is mildly annoying. That is accepted deliberately: an
+app about keeping your word should not put words in your mouth.
+
+The annoyance is kept small by never making it a *second trip*. The create
+screen's primary action **is** the release:
+
+```
+[ Release ]            ← primary: one tap, same as Save is today
+  Save as draft        ← secondary
+```
+
+Same number of taps as before. The button simply names what the act actually
+is. "Save" is a filing operation; **"Release" is giving your word** — and for
+this app, that is worth saying out loud.
+
+### 4.1d The moment of commitment is itself a fact
 
 `released` is a ledger event with a timestamp, not a flag that quietly flips.
 
@@ -351,18 +385,12 @@ Phase 1 stands alone and ships value even if 2–4 never happen.
 
 - **Device id generation** — random UUID on first run, stored in `Settings`, with
   a user-visible friendly name ("Veera's desktop") so provenance is legible.
-- **Does a new task start as Draft or Released?** (§4.1a) The single biggest UX
-  call in this design.
-  - *Released by default* — quick-add stays one step; "Save as draft" is opt-in
-    for planning. Keeps the app fast; risks people committing without meaning to.
-  - *Draft by default* — committing becomes a deliberate act, which matches
-    "releasing is giving your word". But it puts a second step in front of every
-    task, and an app that is slow to capture doesn't get used.
-
-  Leaning: **Released by default for quick capture, Draft for anything created in
-  a planning context** (bulk import, sketching a week ahead, AI-extracted items
-  awaiting review — which is already a review queue today). Needs a call before
-  Phase 1a, since it changes the schema.
+- **A wall of unreleased invitations.** If every incoming meeting arrives as
+  Draft, a calendar-heavy user may accumulate dozens that are never released, and
+  their score then reflects only self-created work. That is philosophically
+  correct — you only answer for what you agreed to — but watch whether it *feels*
+  right in use. A "release today's meetings" affordance may earn its place. Do
+  not pre-build it.
 - **What replaces Delete on a Released task with history?** The action can't just
   vanish, or the UI looks broken. Leaning *"Hide from lists"* — the row leaves
   your views, the record stands. "Not a policeman" (§4.1) argues for letting
