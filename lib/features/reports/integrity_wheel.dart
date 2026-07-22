@@ -39,36 +39,78 @@ class IntegrityWheel extends ConsumerWidget {
         final overall =
             scores.fold<double>(0, (a, s) => a + s.score) / scores.length;
 
-        return AspectRatio(
-          aspectRatio: 1,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final size = Size(constraints.maxWidth, constraints.maxHeight);
-              return GestureDetector(
-                onTapUp: (d) {
-                  final hit = _hitTest(d.localPosition, size, segments.length);
-                  if (hit != null) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            AreaDetailScreen(areaId: segments[hit].areaId),
+        final unanswered = scores.fold<int>(0, (a, s) => a + s.unanswered);
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = Size(
+                    constraints.maxWidth,
+                    constraints.maxHeight,
+                  );
+                  return GestureDetector(
+                    onTapUp: (d) {
+                      final hit = _hitTest(
+                        d.localPosition,
+                        size,
+                        segments.length,
+                      );
+                      if (hit != null) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AreaDetailScreen(areaId: segments[hit].areaId),
+                          ),
+                        );
+                      }
+                    },
+                    child: CustomPaint(
+                      painter: _WheelPainter(
+                        segments: segments,
+                        overall: overall,
+                        onSurface: scheme.onSurface,
+                        outline: scheme.outlineVariant,
+                        labelStyle: Theme.of(context).textTheme.labelSmall!,
+                        centerStyle: Theme.of(context).textTheme.titleLarge!,
                       ),
-                    );
-                  }
+                    ),
+                  );
                 },
-                child: CustomPaint(
-                  painter: _WheelPainter(
-                    segments: segments,
-                    overall: overall,
-                    onSurface: scheme.onSurface,
-                    outline: scheme.outlineVariant,
-                    labelStyle: Theme.of(context).textTheme.labelSmall!,
-                    centerStyle: Theme.of(context).textTheme.titleLarge!,
-                  ),
+              ),
+            ),
+            // Sits *beside* the number, never inside it. Folding these in would
+            // be Saara deciding your silence was a failure; leaving them out
+            // entirely would make silence free — and the safest way to protect
+            // a score would be to never answer at all (§4.1).
+            if (unanswered > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 16,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '$unanswered commitment${unanswered == 1 ? '' : 's'} '
+                        'still unanswered — not counted either way',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+          ],
         );
       },
     );

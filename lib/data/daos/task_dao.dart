@@ -197,6 +197,45 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
     return {for (final r in rows) r.read(tasks.id)!};
   }
 
+  /// Released commitments whose moment has passed with **no answer** — neither
+  /// kept nor broken, because they were never dispositioned.
+  ///
+  /// Deliberately *not* folded into the score. Saara does not decide on your
+  /// behalf that silence was a failure — but nor will it let silence be free:
+  /// counted this way, ignoring a commitment shows up, while still leaving the
+  /// judgement to you (§4.1).
+  ///
+  /// Drafts are excluded — nothing was promised, so nothing is owed.
+  Future<Map<String?, int>> unansweredByArea(DateTime asOf) async {
+    const open = [
+      TaskStatus.created,
+      TaskStatus.started,
+      TaskStatus.inProgress,
+    ];
+    final rows =
+        await (select(tasks)
+              ..where((t) => t.deletedAt.isNull())
+              ..where(
+                (t) =>
+                    t.publicationState.equalsValue(PublicationState.released),
+              )
+              // Rules themselves never come due; their occurrences do.
+              ..where((t) => t.rrule.isNull() | t.parentRecurringId.isNotNull())
+              ..where((t) => t.status.isInValues(open))
+              ..where(
+                (t) =>
+                    t.scheduledStart.isSmallerThanValue(asOf) |
+                    t.dueDate.isSmallerThanValue(asOf),
+              ))
+            .get();
+
+    final out = <String?, int>{};
+    for (final t in rows) {
+      out[t.areaId] = (out[t.areaId] ?? 0) + 1;
+    }
+    return out;
+  }
+
   Future<List<TaskTransition>> transitionsFor(String taskId) =>
       (select(taskTransitions)
             ..where((t) => t.taskId.equals(taskId))

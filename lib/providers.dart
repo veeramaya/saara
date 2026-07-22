@@ -157,10 +157,23 @@ final areaResultsProvider =
 /// Per-area integrity score for the wheel: average of measurable-result
 /// progress, or (if no results) the area's task completion ratio.
 class AreaScore {
-  AreaScore({required this.area, required this.score, required this.hasData});
+  AreaScore({
+    required this.area,
+    required this.score,
+    required this.hasData,
+    this.unanswered = 0,
+  });
   final Area area;
   final double score; // 0..1
   final bool hasData;
+
+  /// Commitments whose moment passed with no answer — neither kept nor broken.
+  ///
+  /// Reported **beside** the score, never inside it. Folding them in would mean
+  /// Saara deciding that your silence was a failure; omitting them entirely
+  /// would make silence free, and the safest way to protect a score would be to
+  /// never answer. Showing the number keeps both honest (§4.1).
+  final int unanswered;
 }
 
 /// §4 area scores, derived from the **ledger** rather than from current task
@@ -190,9 +203,11 @@ final areaScoresProvider = FutureProvider<List<AreaScore>>((ref) async {
     entries,
     legacyReleased: await taskDao.releasedTaskIds(),
   );
+  final unanswered = await taskDao.unansweredByArea(now);
 
   final scores = <AreaScore>[];
   for (final a in areas) {
+    final open = unanswered[a.id] ?? 0;
     final results = await areaDao.resultsForArea(a.id);
     if (results.isNotEmpty) {
       var sum = 0.0;
@@ -202,11 +217,23 @@ final areaScoresProvider = FutureProvider<List<AreaScore>>((ref) async {
         sum += computeProgress(r, logs).fraction;
       }
       scores.add(
-        AreaScore(area: a, score: sum / results.length, hasData: true),
+        AreaScore(
+          area: a,
+          score: sum / results.length,
+          hasData: true,
+          unanswered: open,
+        ),
       );
     } else {
       final s = byArea[a.id] ?? const LedgerScore();
-      scores.add(AreaScore(area: a, score: s.ratio, hasData: s.hasData));
+      scores.add(
+        AreaScore(
+          area: a,
+          score: s.ratio,
+          hasData: s.hasData,
+          unanswered: open,
+        ),
+      );
     }
   }
   return scores;
