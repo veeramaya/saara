@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart' show Value;
+
 import '../data/daos/task_dao.dart';
 import '../data/database.dart';
 import 'enums.dart';
@@ -52,7 +54,89 @@ class TaskService {
     );
     await dao.applyTransition(
       updated: outcome.updatedTask,
-      transition: outcome.transition,
+      transition: await _stamp(outcome.transition, task),
+    );
+  }
+
+  // ---- the ledger (§3.3, docs/LEDGER_DESIGN.md) ---------------------------
+
+  String? _deviceIdCache;
+  Future<String> _deviceId() async =>
+      _deviceIdCache ??= await dao.attachedDatabase.deviceId();
+
+  /// Adds the facts that make an entry readable on its own: the area and title
+  /// **as they are now**, and which device saw it.
+  ///
+  /// Stamped here rather than in the state machine, which is pure and has no
+  /// database to ask. Without this an entry is only a pointer, and reading
+  /// another device's ledger would require its `tasks` table too.
+  Future<TaskTransitionsCompanion> _stamp(
+    TaskTransitionsCompanion row,
+    Task task,
+  ) async => row.copyWith(
+    areaId: Value(task.areaId),
+    titleSnapshot: Value(task.title),
+    deviceId: Value(await _deviceId()),
+  );
+
+  Future<void> _record(
+    Task task, {
+    required LedgerEventKind kind,
+    String? fromAreaId,
+    String? areaId,
+    String? reason,
+  }) async {
+    var row = TaskTransitionsCompanion.insert(
+      id: machine.newId(),
+      taskId: task.id,
+      kind: Value(kind),
+      // The lifecycle didn't move; record the status still standing.
+      toStatus: task.status,
+      at: machine.now(),
+      reason: Value(reason),
+    );
+    row = await _stamp(row, task);
+    if (fromAreaId != null) row = row.copyWith(fromAreaId: Value(fromAreaId));
+    if (areaId != null) row = row.copyWith(areaId: Value(areaId));
+    await dao.recordLedgerEntry(row);
+  }
+
+  /// Notes that a commitment came into existence — still a draft.
+  Future<void> recordCreated(Task task) =>
+      _record(task, kind: LedgerEventKind.created);
+
+  /// **Giving your word.** Flips the task to released and records the moment,
+  /// because when you committed is a fact in its own right (§4.1d) — the gap
+  /// between committing and acting is worth being able to see.
+  Future<void> release(Task task) async {
+    await dao.setPublicationState(task.id, PublicationState.released);
+    await _record(task, kind: LedgerEventKind.released);
+  }
+
+  /// Notes a removal. What it already accrued stays: delete removes the future,
+  /// never the past (§4.2).
+  Future<void> recordDeleted(Task task, {String? reason}) =>
+      _record(task, kind: LedgerEventKind.deleted, reason: reason);
+
+  /// Re-files a task, as an **adjusting entry** rather than an edit (§4.3).
+  /// The original posting stands; reporting follows the correction.
+  ///
+  /// [reason] is optional and never required — it exists because noticing
+  /// *"I keep filing entertainment under health"* is worth learning from, and
+  /// for no other purpose. It is never scored.
+  Future<void> correctArea(
+    Task task,
+    String? newAreaId, {
+    String? reason,
+  }) async {
+    if (task.areaId == newAreaId) return;
+    await dao.setArea(task.id, newAreaId);
+    await _record(
+      task,
+      kind: LedgerEventKind.corrected,
+      fromAreaId: task.areaId,
+      areaId: newAreaId,
+      reason: reason,
     );
   }
 
@@ -72,7 +156,7 @@ class TaskService {
     );
     await dao.applyTransition(
       updated: outcome.updatedTask,
-      transition: outcome.transition,
+      transition: await _stamp(outcome.transition, task),
     );
     if (outcome.spawnedInstance != null) {
       await dao.insertTask(outcome.spawnedInstance!);

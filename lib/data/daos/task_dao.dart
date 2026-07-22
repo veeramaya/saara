@@ -604,4 +604,33 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
       await into(taskTransitions).insert(transition);
     });
   }
+
+  /// Appends one entry to the ledger.
+  ///
+  /// Append-only by design: there is no update or delete counterpart, and there
+  /// must never be one. Ids are unique per entry, so re-running an import is
+  /// harmless — `insertOnConflictUpdate` keeps a merge idempotent rather than
+  /// throwing on an entry another device already sent us.
+  Future<void> recordLedgerEntry(TaskTransitionsCompanion entry) =>
+      into(taskTransitions).insertOnConflictUpdate(entry);
+
+  /// Draft ⇄ released (§4.1a). Kept separate from the general update path so
+  /// the moment of commitment always travels with a ledger entry beside it.
+  Future<void> setPublicationState(String taskId, PublicationState state) {
+    return (update(tasks)..where((t) => t.id.equals(taskId))).write(
+      TasksCompanion(
+        publicationState: Value(state),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Re-files a task. Callers should use `TaskService.correctArea`, which also
+  /// posts the adjusting entry — moving the area without recording it would let
+  /// history be rewritten quietly, which is exactly what the ledger forbids.
+  Future<void> setArea(String taskId, String? areaId) {
+    return (update(tasks)..where((t) => t.id.equals(taskId))).write(
+      TasksCompanion(areaId: Value(areaId), updatedAt: Value(DateTime.now())),
+    );
+  }
 }

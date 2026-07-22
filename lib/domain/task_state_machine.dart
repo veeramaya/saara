@@ -60,6 +60,19 @@ class TaskStateMachine {
   final DateTime Function() _now;
   final String Function() _newId;
 
+  /// A fresh ledger-entry id. Exposed so callers that record entries the machine
+  /// has no opinion about — creation, release, deletion, correction — mint ids
+  /// the same way and stay collision-free across devices.
+  String newId() => _newId();
+
+  /// The clock every ledger entry is stamped from.
+  ///
+  /// Shared deliberately: entry times decide what counted as a draft and what
+  /// came after you gave your word, so they must all come from one source. Two
+  /// clocks would let a release land on the same instant as work recorded
+  /// before it, and the boundary would stop meaning anything.
+  DateTime now() => _now();
+
   /// Legal forward transitions. Terminal states map to an empty set.
   static const Map<TaskStatus, Set<TaskStatus>> _allowed = {
     TaskStatus.created: {
