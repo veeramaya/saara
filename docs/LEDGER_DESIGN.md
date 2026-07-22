@@ -134,21 +134,36 @@ it declines to *forget on demand*, which is a different and smaller claim.
 
 A task or event has a **publication state**, orthogonal to its lifecycle status:
 
-| State | Syncs | Counted in reporting | Deletable |
-|---|---|---|---|
-| **Draft** | No — stays on this device | **No** | Freely |
-| **Released** | Yes, everywhere | Yes | Future only (§4.2) |
+| State | Your own devices | Google (interop) | Counted in reporting | Deletable |
+|---|---|---|---|---|
+| **Draft** | **Syncs** | No | **No** | Freely |
+| **Released** | Syncs | Syncs | Yes | Future only (§4.2) |
 
-Releasing is **giving your word**. Before that it is thinking out loud, and
-thinking out loud should cost nothing — you can sketch a week, change your mind,
-throw it away, and none of it touches your record.
+**A draft is in the ledger and travels with it** — sketch a week on the desktop
+and it is on your phone. It simply does not move the books. This is exactly the
+accounting distinction between an **unposted** entry and a **posted** one:
+present, visible, carried along, but not counted until posted.
 
-This is the accounting distinction between an **unposted draft entry** and a
-**posted** one. A draft may sit in the ledger for completeness, but it does not
-move the books.
+Drafts stay out of **Google**, though. Google is where the outside world sees
+your calendar; putting half-formed thinking there makes it public before you
+meant it to be, and clutters a calendar other people may share.
 
-It also settles the deletion tension without any special-casing: you can delete
-freely right up to the moment you commit, and after that the rule below applies.
+> Releasing is **giving your word**. Before that it is thinking out loud, and
+> thinking out loud should cost nothing — sketch a week, change your mind, throw
+> it away, and none of it touches your record.
+
+### 4.1b The moment of commitment is itself a fact
+
+`released` is a ledger event with a timestamp, not a flag that quietly flips.
+
+That means the record can answer *when you gave your word*, and the gap between
+committing and acting becomes visible — how far ahead you commit, whether things
+sit in draft for weeks, whether you release and then immediately miss. For an
+app about integrity, the moment of commitment is at least as interesting as the
+moment of completion.
+
+It also settles the deletion tension with no special-casing: you may delete
+freely right up to the moment you commit, and after that §4.2 applies.
 
 ### 4.2 Deletion policy
 
