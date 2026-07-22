@@ -133,6 +133,8 @@ class TaskDetailScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               _schedule(context, task),
               const SizedBox(height: 8),
+              _AreaRow(task: task),
+              const SizedBox(height: 8),
               _Participants(taskId: taskId),
               if (task.kind == TaskKind.event) ...[
                 const SizedBox(height: 16),
@@ -358,19 +360,36 @@ class TaskDetailScreen extends ConsumerWidget {
         ),
       );
     } else {
+      // §4.2 delete removes the future, never the past. Once something has
+      // moved out of `created` it happened — it existed in your plan or your
+      // execution — so the row can leave your lists but the record cannot.
+      final hasHistory =
+          task.publicationState == PublicationState.released &&
+          task.status != TaskStatus.created;
+      final childNote = children.isEmpty
+          ? ''
+          : '\n\nIts ${children.length} action '
+                'item${children.length == 1 ? '' : 's'} stay in your task list.';
+
       choice = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Delete “${task.title}”?'),
+          title: Text(
+            hasHistory ? 'Hide “${task.title}”?' : 'Delete “${task.title}”?',
+          ),
           content: Text(
-            children.isEmpty
-                ? 'It moves to Trash — you can restore it from '
-                      'Tasks → Deleted. If it\'s synced, it will also be '
-                      'removed from Google.'
-                : 'It moves to Trash — you can restore it from '
-                      'Tasks → Deleted.\n\nIts ${children.length} action '
-                      'item${children.length == 1 ? '' : 's'} will NOT be '
-                      'deleted; they stay in your task list.',
+            hasHistory
+                ? 'This has already happened, so it stays in your record — '
+                      'your score is unchanged either way.\n\n'
+                      'It leaves your lists and moves to Trash, where you can '
+                      'restore it.$childNote'
+                : task.publicationState == PublicationState.draft
+                ? 'This is still a draft — nothing was committed and nothing '
+                      'has been counted. It moves to Trash, where you can '
+                      'restore it.$childNote'
+                : 'You never started this, so nothing leaves your record. It '
+                      'moves to Trash, where you can restore it. If it\'s '
+                      'synced, it is removed from Google too.$childNote',
           ),
           actions: [
             TextButton(
@@ -379,13 +398,17 @@ class TaskDetailScreen extends ConsumerWidget {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, 'one'),
-              child: const Text('Delete'),
+              child: Text(hasHistory ? 'Hide from lists' : 'Delete'),
             ),
           ],
         ),
       );
     }
     if (choice == null) return;
+
+    // Record the removal before performing it — the row leaves your lists, but
+    // that it was removed is itself a fact worth keeping (§4.2).
+    await ref.read(taskServiceProvider).recordDeleted(task);
 
     // Perform the delete for the chosen scope.
     final int removed;
@@ -1385,6 +1408,147 @@ class _AttachedImage extends StatelessWidget {
 }
 
 /// One row in the recurring delete-scope chooser: icon, bold label, subtext.
+/// §4.3 which area this sits under, and the way to re-file it.
+///
+/// Re-filing something that already happened is a **correction**, not an edit:
+/// the original posting stands and an adjusting entry is added beside it, so
+/// reporting follows the correction without the past being quietly rewritten.
+///
+/// The everyday case this exists for: *watching a movie* filed under Health
+/// when it belonged in Entertainment. The instinct is to delete it; the right
+/// answer is to correct it.
+class _AreaRow extends ConsumerWidget {
+  const _AreaRow({required this.task});
+  final Task task;
+
+  bool get _hasHistory =>
+      task.publicationState == PublicationState.released &&
+      task.status != TaskStatus.created;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final areas = ref.watch(activeAreasProvider).valueOrNull ?? const <Area>[];
+    final area = areas.where((a) => a.id == task.areaId).firstOrNull;
+    final scheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: () => _refile(context, ref, areas),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(Icons.donut_small_outlined, size: 16, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              area?.displayName ?? 'Unclassified',
+              style: TextStyle(
+                color: area == null ? scheme.onSurfaceVariant : null,
+                fontStyle: area == null ? FontStyle.italic : null,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.edit_outlined, size: 14, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _refile(
+    BuildContext context,
+    WidgetRef ref,
+    List<Area> areas,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final reason = TextEditingController();
+
+    final picked = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_hasHistory ? 'Re-file this' : 'Choose an area'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_hasHistory)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'This already happened, so the original entry stays. '
+                    'Saara adds a correction beside it and reports it under '
+                    'the new area.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final a in areas)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(a.displayName),
+                          trailing: a.id == task.areaId
+                              ? const Icon(Icons.check, size: 18)
+                              : null,
+                          onTap: () => Navigator.pop(ctx, a.id),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Optional, never demanded, never scored — it exists only so the
+              // user can notice their own patterns later (§4.4).
+              TextField(
+                controller: reason,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: 'Why? (optional)',
+                  hintText: 'recreation, not health',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (picked == null || picked == task.areaId) return;
+
+    final text = reason.text.trim();
+    await ref
+        .read(taskServiceProvider)
+        .correctArea(task, picked, reason: text.isEmpty ? null : text);
+
+    ref.invalidate(taskByIdProvider(task.id));
+    ref.invalidate(taskTransitionsProvider(task.id));
+    ref.invalidate(areaScoresProvider);
+    ref.invalidate(overallEffectivenessProvider);
+    ref.invalidate(allTasksProvider);
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          _hasHistory
+              ? 'Re-filed. The original entry stays in your record.'
+              : 'Area updated.',
+        ),
+      ),
+    );
+  }
+}
+
 class _ScopeOption extends StatelessWidget {
   const _ScopeOption({
     required this.icon,

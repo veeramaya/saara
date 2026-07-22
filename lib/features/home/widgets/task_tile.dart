@@ -48,6 +48,28 @@ class TaskTile extends ConsumerWidget {
         ),
         subtitle: Row(
           children: [
+            // §4.1a a draft isn't a commitment yet — it shows, but it doesn't
+            // count, and that difference should be visible rather than hidden
+            // in a detail screen.
+            if (task.publicationState == PublicationState.draft) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  border: Border.all(color: scheme.outline),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'DRAFT',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             if (time != null) ...[
               const Icon(Icons.schedule, size: 14),
               const SizedBox(width: 4),
