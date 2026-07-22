@@ -1599,6 +1599,34 @@ class _StatusLine extends StatelessWidget {
   const _StatusLine({required this.task});
   final Task task;
 
+  /// Still open, and its moment has passed.
+  ///
+  /// Saara does **not** silently mark it missed — §4 requires that you see it
+  /// first, in the evening review. But showing a bland "created" for something
+  /// whose time has gone makes it indistinguishable from a task still ahead of
+  /// you, and that is its own kind of dishonesty. It happened or it didn't;
+  /// the least the app can do is say the moment has passed and it is waiting on
+  /// an answer.
+  bool get _pastDue {
+    const open = {
+      TaskStatus.created,
+      TaskStatus.started,
+      TaskStatus.inProgress,
+    };
+    if (!open.contains(task.status)) return false;
+    final when = task.scheduledStart ?? task.dueDate;
+    return when != null && when.isBefore(DateTime.now());
+  }
+
+  String get _sinceDue {
+    final when = task.scheduledStart ?? task.dueDate;
+    if (when == null) return '';
+    final d = DateTime.now().difference(when);
+    if (d.inDays >= 1) return ' · ${d.inDays}d ago';
+    if (d.inHours >= 1) return ' · ${d.inHours}h ago';
+    return ' · just now';
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1607,8 +1635,9 @@ class _StatusLine extends StatelessWidget {
       TaskStatus.missed => scheme.error,
       TaskStatus.rejected => scheme.error,
       TaskStatus.rescheduled => scheme.tertiary,
-      _ => scheme.primary,
+      _ => _pastDue ? scheme.error : scheme.primary,
     };
+    final label = _pastDue ? 'not answered$_sinceDue' : task.status.name;
     return Row(
       children: [
         Container(
@@ -1618,7 +1647,7 @@ class _StatusLine extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
-            task.status.name,
+            label,
             style: TextStyle(color: color, fontWeight: FontWeight.w600),
           ),
         ),

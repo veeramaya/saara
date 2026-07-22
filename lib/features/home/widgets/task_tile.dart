@@ -96,7 +96,7 @@ class TaskTile extends ConsumerWidget {
             (task.status == TaskStatus.started ||
                 task.status == TaskStatus.inProgress)
             ? _TileTimer(task: task)
-            : _StatusChip(status: task.status),
+            : _StatusChip(status: task.status, due: time),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
         ),
@@ -227,7 +227,12 @@ class _TileTimerState extends ConsumerState<_TileTimer> {
         startedAt = t.at;
       }
     }
-    if (startedAt == null) return _StatusChip(status: widget.task.status);
+    if (startedAt == null) {
+      return _StatusChip(
+        status: widget.task.status,
+        due: widget.task.scheduledStart ?? widget.task.dueDate,
+      );
+    }
 
     final scheme = Theme.of(context).colorScheme;
     final elapsed = DateTime.now().difference(startedAt);
@@ -265,11 +270,43 @@ class _TileTimerState extends ConsumerState<_TileTimer> {
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
+  const _StatusChip({required this.status, this.due});
   final TaskStatus status;
+
+  /// When this was meant to happen, so a commitment whose moment has passed
+  /// doesn't read the same as one still ahead (see `_StatusLine`). Saara still
+  /// never marks it missed on its own — that needs you to see it (§4).
+  final DateTime? due;
+
+  bool get _pastDue {
+    const open = {
+      TaskStatus.created,
+      TaskStatus.started,
+      TaskStatus.inProgress,
+    };
+    return open.contains(status) &&
+        due != null &&
+        due!.isBefore(DateTime.now());
+  }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (_pastDue) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, size: 14, color: scheme.error),
+          const SizedBox(width: 4),
+          Text(
+            'not answered',
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: scheme.error),
+          ),
+        ],
+      );
+    }
     return Text(status.name, style: Theme.of(context).textTheme.labelSmall);
   }
 }
