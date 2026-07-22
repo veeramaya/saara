@@ -1,5 +1,7 @@
 package com.realmaya.saara
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// FlutterFragmentActivity is required by the Health Connect plugin (§10) for
+// its permissions flow.
+class MainActivity : FlutterFragmentActivity()

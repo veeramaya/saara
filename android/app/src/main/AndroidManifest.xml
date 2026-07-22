@@ -1,6 +1,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- §8 notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- §8 exact daily-agent alarms (07:00 / 21:00) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- §5 boot re-schedule of local notifications -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- User-initiated network only: Todoist import / Google / LLM (§18.5) -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- §11 on-device contact matching for task participants (read-only) -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <!-- §19 voice capture (speech-to-text) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- §8 foreground location for geocoding a task's place. Background location
+         (ACCESS_BACKGROUND_LOCATION) is intentionally NOT declared for the first
+         production release — it triggers Google Play's background-location
+         review. Re-add it with kGeofenceEnabled=true once that's prepared. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- §10 Health Connect read permissions (auto-score health results) -->
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
+    <uses-permission android:name="android.permission.health.READ_SLEEP"/>
+    <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
+
     <application
-        android:label="saara"
+        android:label="Saara"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -24,7 +49,32 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- §10 Health Connect: rationale (Android ≤13) + permission usage
+                 (Android 14+). Points back to this activity. -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
+            </intent-filter>
         </activity>
+        <!-- §10 Health Connect rationale target for Android 14+ (alias). -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
+            </intent-filter>
+        </activity-alias>
+        <!-- §11 OCR: have Play Services fetch the ML Kit text-recognition model
+             at install time so on-device recognition works offline first-run. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -41,5 +91,16 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- §14 feedback mailto: url_launcher must see an email app to resolve -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <!-- §19 speech-to-text must see a recognition service -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <!-- §10 Health Connect package visibility -->
+        <package android:name="com.google.android.apps.healthdata"/>
     </queries>
 </manifest>
