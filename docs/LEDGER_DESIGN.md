@@ -158,16 +158,50 @@ meant it to be, and clutters a calendar other people may share.
 |---|---|---|
 | Created by hand | **Draft**, releasable in the same step | Committing is a deliberate act, not a side effect of typing |
 | AI extraction, bulk/file import | **Draft** | Already a review queue — nothing has been agreed to yet |
-| **Incoming Google Calendar invitation** | **Draft** | *Someone else* put it on your calendar. It may not be in your plan at all |
-| Incoming Google Task | **Draft** | Same |
+| **Incoming Google Calendar invitation** | **Released** | It is already in your world and **you owe a response** (§4.1b-i) |
+| Incoming Google Task | **Released** | Same — someone put it in front of you |
 
-The invitation case is the one that could not be expressed before. A meeting
-landing on your calendar is **not** a commitment you made — it is a proposal.
-Releasing it is you saying *"yes, this is mine."* Until then Saara shows it,
-because you need to see it, but it does not count for or against you.
+### 4.1b-i An invitation is already live
 
-That distinction — **what is on my calendar** versus **what I have committed
-to** — is real in life and was invisible in the app.
+The first instinct — treat an invitation as a draft until you opt in — is wrong,
+and worth saying why, because the reasoning shapes the whole app.
+
+> **An unanswered invitation lacks your listening with others.**
+
+An invitation is not merely a proposal sitting outside your commitments. It is a
+request from another person, it already shows on your calendar, and **you owe a
+response**. Leaving it unanswered is not neutral — it is a breakdown in the
+relationship, and it should be visible as one.
+
+So invitations arrive **Released** and count. What you then do with one is an
+honest disposition:
+
+| You | Status | Reading |
+|---|---|---|
+| Accept and attend | `completed` | You gave your word and kept it |
+| Accept, then don't attend | `missed` | You gave your word and didn't |
+| **Decline** | `rejected` | **An honest answer. Not a failure** — you responded |
+| Ignore it | `missed` | The breakdown. You never answered |
+
+Declining is a complete and respectable response; the app must never treat it as
+a black mark. **Silence is the failure**, not refusal.
+
+This extends Saara past personal task-keeping into **relational** integrity —
+whether you are answerable to other people, not just to yourself.
+
+### 4.1b-ii Classification is the opportunity
+
+An arriving event still needs an **area**, and that act is where the value is.
+The options deliberately include something like **"Not mine"** or **"Unwanted"**
+alongside the real areas.
+
+Because then the record can answer a question people rarely ask themselves
+honestly: *how much of my week goes to things I never chose?* Seeing a month of
+meetings classified "Not mine" is developmental in a way no productivity metric
+is — it is an **opportunity to develop**, not a reprimand.
+
+Unclassified released events should be surfaced gently — *"3 events to
+classify"* — as an invitation to look, never as a nag.
 
 ### 4.1c The friction is the point (taken with a pinch of salt)
 
@@ -385,12 +419,14 @@ Phase 1 stands alone and ships value even if 2–4 never happen.
 
 - **Device id generation** — random UUID on first run, stored in `Settings`, with
   a user-visible friendly name ("Veera's desktop") so provenance is legible.
-- **A wall of unreleased invitations.** If every incoming meeting arrives as
-  Draft, a calendar-heavy user may accumulate dozens that are never released, and
-  their score then reflects only self-created work. That is philosophically
-  correct — you only answer for what you agreed to — but watch whether it *feels*
-  right in use. A "release today's meetings" affordance may earn its place. Do
-  not pre-build it.
+- **Is "Not mine" an ordinary area or a reserved one?** (§4.1b-ii) A normal area
+  keeps the model simple and lets the user name it themselves; a reserved one
+  makes the "time you never chose" report reliable across users. Leaning
+  ordinary-but-seeded, so it can be renamed or deleted like any other.
+- **A recurring meeting you were invited to** generates many occurrences, each
+  needing a disposition. Does classifying the series classify every occurrence?
+  Almost certainly yes — but confirm before building, since it interacts with the
+  rule/occurrence split (§3).
 - **What replaces Delete on a Released task with history?** The action can't just
   vanish, or the UI looks broken. Leaning *"Hide from lists"* — the row leaves
   your views, the record stands. "Not a policeman" (§4.1) argues for letting
