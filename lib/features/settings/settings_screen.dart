@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -569,17 +570,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _ledgerImport() async {
+    // withData pulls the bytes even when the file lives in a cloud provider
+    // (Google Drive, etc.), where Android hands back a reference with no local
+    // path — reading path alone would fail for exactly the file the user picked.
     final picked = await FilePicker.platform.pickFiles(
       dialogTitle: 'Choose a Saara ledger file',
       type: FileType.any,
+      withData: true,
     );
-    final path = picked?.files.single.path;
-    if (path == null || !mounted) return;
+    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final file = picked.files.single;
 
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _ledgerBusy = true);
     try {
-      final content = await File(path).readAsString();
+      final content = file.bytes != null
+          ? utf8.decode(file.bytes!)
+          : await File(file.path!).readAsString();
       final sync = ref.read(ledgerSyncServiceProvider);
       // Only a protected file asks for a password; a plain one just imports.
       String? passphrase;
