@@ -101,6 +101,31 @@ class TaskService {
     await dao.recordLedgerEntry(row);
   }
 
+  /// The one way to bring a task into being.
+  ///
+  /// Every creation path — the card, Saara chat, voice, capture, import, a
+  /// duplicate — goes through here, so no task can exist without a `created`
+  /// entry in the ledger, and (when committed) a `released` one. Before this,
+  /// each path inserted its own row and most wrote nothing to the ledger, so
+  /// History was complete only for card-made tasks and publication state drifted
+  /// to whatever the column default happened to be.
+  ///
+  /// [release] defaults to true: adding a task is committing to it. Pass false
+  /// for the deliberate draft, or for a review queue (capture, bulk import)
+  /// whose items are not commitments until the user says so.
+  Future<Task> create(TasksCompanion companion, {bool release = true}) async {
+    final withState = companion.copyWith(
+      publicationState: Value(
+        release ? PublicationState.released : PublicationState.draft,
+      ),
+    );
+    await dao.insertTask(withState);
+    final task = (await dao.findById(withState.id.value))!;
+    await recordCreated(task);
+    if (release) await this.release(task);
+    return task;
+  }
+
   /// Notes that a commitment came into existence — still a draft.
   Future<void> recordCreated(Task task) =>
       _record(task, kind: LedgerEventKind.created);

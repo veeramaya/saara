@@ -51,9 +51,11 @@ Future<String> applyTaskCommand(
       final dur = data['durationMinutes'];
       final notes = data['notes']?.toString().trim();
       final loc = data['location']?.toString().trim();
+      // Through create(): a task you asked Saara to add is a commitment, so it
+      // is released, and it is recorded in the ledger like any other (§4).
       await ref
-          .read(taskDaoProvider)
-          .insertTask(
+          .read(taskServiceProvider)
+          .create(
             TasksCompanion.insert(
               id: ref.read(uuidProvider).v4(),
               title: title,

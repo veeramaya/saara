@@ -13,6 +13,7 @@ import '../task_detail/task_detail_screen.dart';
 /// tokens, natural dates), sort, and tap through to edit or see attachments.
 enum _StatusFilter {
   all,
+  drafts,
   open,
   done,
   missed,
@@ -97,8 +98,11 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     switch (_filter) {
       case _StatusFilter.all:
         return !archived;
+      case _StatusFilter.drafts:
+        return t.publicationState == PublicationState.draft;
       case _StatusFilter.open:
         return !archived &&
+            t.publicationState == PublicationState.released &&
             (t.status == TaskStatus.created ||
                 t.status == TaskStatus.started ||
                 t.status == TaskStatus.inProgress);
@@ -321,6 +325,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
 
   String _label(_StatusFilter f) => switch (f) {
     _StatusFilter.all => 'All',
+    _StatusFilter.drafts => 'Drafts',
     _StatusFilter.open => 'Open',
     _StatusFilter.done => 'Done',
     _StatusFilter.missed => 'Missed',
@@ -410,6 +415,7 @@ class _TaskRow extends StatelessWidget {
       _ => isEvent ? scheme.tertiary : scheme.primary,
     };
     final bits = <String>[];
+    if (task.publicationState == PublicationState.draft) bits.add('draft');
     if (when != null) bits.add(DateFormat('MMM d').format(when));
     bits.add(task.status.name);
     if (areaName != null) bits.add(areaName!);

@@ -208,7 +208,6 @@ class _ReviewItemsScreenState extends ConsumerState<ReviewItemsScreen> {
         .toList();
     if (selected.isEmpty) return;
     setState(() => _creating = true);
-    final dao = ref.read(taskDaoProvider);
     final uuid = ref.read(uuidProvider);
     final areas = ref.read(activeAreasProvider).valueOrNull ?? const [];
     final now = DateTime.now();
@@ -234,26 +233,30 @@ class _ReviewItemsScreenState extends ConsumerState<ReviewItemsScreen> {
           doc = it.link;
         }
       }
-      await dao.insertTask(
-        TasksCompanion.insert(
-          id: uuid.v4(),
-          title: it.title,
-          kind: Value(it.kind),
-          scheduledStart: Value(it.datetime),
-          dueDate: Value(it.datetime),
-          durationMin: Value(it.durationMin),
-          locationName: Value(it.location),
-          meetingLink: Value(meeting),
-          documentLink: Value(doc),
-          areaId: Value(areaId),
-          parentEventId: Value(widget.parentEventId),
-          notes: Value(it.notes.isEmpty ? null : it.notes),
-          attachmentImagePath: Value(widget.imagePath),
-          source: const Value(TaskSource.conversation),
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
+      // The user has already reviewed and chosen these items, so keeping one is
+      // committing to it — released, and recorded in the ledger via create().
+      await ref
+          .read(taskServiceProvider)
+          .create(
+            TasksCompanion.insert(
+              id: uuid.v4(),
+              title: it.title,
+              kind: Value(it.kind),
+              scheduledStart: Value(it.datetime),
+              dueDate: Value(it.datetime),
+              durationMin: Value(it.durationMin),
+              locationName: Value(it.location),
+              meetingLink: Value(meeting),
+              documentLink: Value(doc),
+              areaId: Value(areaId),
+              parentEventId: Value(widget.parentEventId),
+              notes: Value(it.notes.isEmpty ? null : it.notes),
+              attachmentImagePath: Value(widget.imagePath),
+              source: const Value(TaskSource.conversation),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
     }
 
     ref.invalidate(tasksForDayProvider(DateTime(now.year, now.month, now.day)));

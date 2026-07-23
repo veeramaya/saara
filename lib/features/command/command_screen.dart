@@ -277,8 +277,8 @@ class _CommandScreenState extends ConsumerState<CommandScreen> {
     final notes = data['notes']?.toString().trim();
     final loc = data['location']?.toString().trim();
     await ref
-        .read(taskDaoProvider)
-        .insertTask(
+        .read(taskServiceProvider)
+        .create(
           TasksCompanion.insert(
             id: ref.read(uuidProvider).v4(),
             title: title,

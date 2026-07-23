@@ -1676,6 +1676,11 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     // Refresh today (an instance may land today) and the anchored day.
     ref.invalidate(tasksForDayProvider(DateTime(now.year, now.month, now.day)));
     ref.invalidate(unscheduledTasksProvider);
+    // The global Tasks list reads allTasks — without this a freshly created
+    // task (a draft especially) never appears there until the list reloads.
+    ref.invalidate(allTasksProvider);
+    ref.invalidate(tasksBetweenProvider);
+    ref.invalidate(areaScoresProvider);
     if (anchor != null) {
       ref.invalidate(
         tasksForDayProvider(DateTime(anchor.year, anchor.month, anchor.day)),
