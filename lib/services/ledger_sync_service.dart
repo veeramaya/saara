@@ -198,28 +198,40 @@ class LedgerSyncService {
 
     await db.transaction(() async {
       for (final j in (bundle['areas'] as List? ?? const [])) {
-        final a = Area.fromJson(j as Map<String, dynamic>);
+        final a = Area.fromJson(
+          j as Map<String, dynamic>,
+          serializer: _serializer,
+        );
         if (await _isNewer(db.areas, a.id, a.updatedAt)) {
           await db.into(db.areas).insertOnConflictUpdate(a);
           summary.areas++;
         }
       }
       for (final j in (bundle['results'] as List? ?? const [])) {
-        final r = MeasurableResult.fromJson(j as Map<String, dynamic>);
+        final r = MeasurableResult.fromJson(
+          j as Map<String, dynamic>,
+          serializer: _serializer,
+        );
         if (await _isNewer(db.measurableResults, r.id, r.updatedAt)) {
           await db.into(db.measurableResults).insertOnConflictUpdate(r);
           summary.results++;
         }
       }
       for (final j in (bundle['tasks'] as List? ?? const [])) {
-        final t = Task.fromJson(j as Map<String, dynamic>);
+        final t = Task.fromJson(
+          j as Map<String, dynamic>,
+          serializer: _serializer,
+        );
         if (await _isNewer(db.tasks, t.id, t.updatedAt)) {
           await db.into(db.tasks).insertOnConflictUpdate(t);
           summary.tasks++;
         }
       }
       for (final j in (bundle['ledger'] as List? ?? const [])) {
-        final e = TaskTransition.fromJson(j as Map<String, dynamic>);
+        final e = TaskTransition.fromJson(
+          j as Map<String, dynamic>,
+          serializer: _serializer,
+        );
         if (!await _exists(db.taskTransitions, e.id)) {
           await db.into(db.taskTransitions).insert(e);
           summary.ledgerEntries++;
@@ -300,6 +312,30 @@ class LedgerSyncService {
     return row != null;
   }
 }
+
+/// Coerces JSON back into Drift rows, fixing the one thing the default
+/// deserializer gets wrong here: a `List<int>` column (e.g. `reminderOffsets`)
+/// comes out of `jsonDecode` as `List<dynamic>`, and Drift's plain cast to
+/// `List<int>?` throws. We rebuild it as a real `List<int>`. Everything else is
+/// left to the default serializer.
+class _BundleSerializer extends ValueSerializer {
+  const _BundleSerializer();
+  static const _base = ValueSerializer.defaults();
+
+  @override
+  dynamic toJson<T>(T value) => _base.toJson<T>(value);
+
+  @override
+  T fromJson<T>(dynamic json) {
+    if (json is List) {
+      // Every list column in the exported tables is a List<int>.
+      return json.map((e) => e as int).toList() as T;
+    }
+    return _base.fromJson<T>(json);
+  }
+}
+
+const _serializer = _BundleSerializer();
 
 /// What a merge changed — shown back to the user, and asserted in tests.
 class MergeSummary {

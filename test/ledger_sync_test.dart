@@ -87,6 +87,30 @@ void main() {
       syncB.importJson(await syncA.exportJson());
 
   group('a fresh task travels', () {
+    test('a task with a list column (reminderOffsets) round-trips', () async {
+      // The bug the user hit: reminderOffsets is List<int>, and jsonDecode
+      // gives List<dynamic>, which the default deserializer cannot cast — the
+      // whole import failed with a type-cast error.
+      await deviceA
+          .into(deviceA.tasks)
+          .insert(
+            TasksCompanion.insert(
+              id: 'reminded',
+              title: 'has reminders',
+              reminderOffsets: const Value([-15, -60]),
+              publicationState: const Value(PublicationState.released),
+              createdAt: t0,
+              updatedAt: t0,
+            ),
+          );
+
+      await aIntoB();
+
+      final t = await deviceB.taskDao.findById('reminded');
+      expect(t, isNotNull, reason: 'import must not fail on a list column');
+      expect(t!.reminderOffsets, [-15, -60]);
+    });
+
     test('a task and its ledger entry appear on the other device', () async {
       await addArea(deviceA, 'health');
       await addTask(deviceA, 't1', title: 'Morning walk', areaId: 'health');
