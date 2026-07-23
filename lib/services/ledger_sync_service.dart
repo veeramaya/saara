@@ -232,6 +232,31 @@ class LedgerSyncService {
   Future<MergeSummary> importJson(String jsonStr) =>
       importBundle(json.decode(jsonStr) as Map<String, dynamic>);
 
+  /// True when a file's contents are an encrypted Saara bundle (vs a plain one).
+  bool isEncrypted(String content) {
+    try {
+      final m = json.decode(content);
+      return m is Map && m['magic'] == _magic;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Import a file whether it is encrypted or plain — the common case (a manual
+  /// transfer between your own devices) needs no passphrase at all. Only a file
+  /// that was deliberately protected asks for one.
+  Future<MergeSummary> importFile(String content, {String? passphrase}) async {
+    if (isEncrypted(content)) {
+      if (passphrase == null || passphrase.isEmpty) {
+        throw const FormatException(
+          'This file is password-protected. Enter its password to import.',
+        );
+      }
+      return importEncrypted(content, passphrase);
+    }
+    return importJson(content);
+  }
+
   /// True when we don't have [id], or the incoming [incoming] stamp is *strictly*
   /// newer than ours — the last-writer-wins test.
   ///

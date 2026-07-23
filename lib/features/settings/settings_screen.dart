@@ -485,25 +485,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _ledgerExport() async {
-    final passphrase = await _askPassphrase(creating: true);
-    if (passphrase == null || passphrase.isEmpty || !mounted) return;
+    // No password by default — a manual transfer between your own devices does
+    // not need one. Offer it for when the file will sit somewhere shared.
+    final protect =
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Export ledger file'),
+            content: const Text(
+              'Add a password? Skip it for a quick transfer to your own '
+              'device. Add one if the file will sit in a shared or cloud '
+              'folder where others could open it.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Skip — no password'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Add a password'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!mounted) return;
+
+    String? passphrase;
+    if (protect) {
+      passphrase = await _askPassphrase(creating: true);
+      if (passphrase == null || passphrase.isEmpty || !mounted) return;
+    }
+
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _ledgerBusy = true);
     try {
-      final armored = await ref
-          .read(ledgerSyncServiceProvider)
-          .exportEncrypted(passphrase);
+      final sync = ref.read(ledgerSyncServiceProvider);
+      final content = passphrase == null
+          ? await sync.exportJson()
+          : await sync.exportEncrypted(passphrase);
       final dir = await getTemporaryDirectory();
       final stamp = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
       final file = File('${dir.path}/saara-ledger-$stamp.saara');
-      await file.writeAsString(armored);
+      await file.writeAsString(content);
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: 'Saara ledger (encrypted)',
-        text:
-            'My Saara record — import this on your other device with the '
-            'passphrase you set.',
+        subject: 'Saara ledger',
+        text: passphrase == null
+            ? 'My Saara record — import this on your other device.'
+            : 'My Saara record — import this with the password you set.',
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
@@ -519,16 +551,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     final path = picked?.files.single.path;
     if (path == null || !mounted) return;
-    final passphrase = await _askPassphrase(creating: false);
-    if (passphrase == null || passphrase.isEmpty || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _ledgerBusy = true);
     try {
-      final armored = await File(path).readAsString();
-      final summary = await ref
-          .read(ledgerSyncServiceProvider)
-          .importEncrypted(armored, passphrase);
+      final content = await File(path).readAsString();
+      final sync = ref.read(ledgerSyncServiceProvider);
+      // Only a protected file asks for a password; a plain one just imports.
+      String? passphrase;
+      if (sync.isEncrypted(content)) {
+        setState(() => _ledgerBusy = false);
+        passphrase = await _askPassphrase(creating: false);
+        if (passphrase == null || passphrase.isEmpty || !mounted) return;
+        setState(() => _ledgerBusy = true);
+      }
+      final summary = await sync.importFile(content, passphrase: passphrase);
       // Everything on screen may have changed — rebuild the graph.
       ref.invalidate(allTasksProvider);
       ref.invalidate(unscheduledTasksProvider);

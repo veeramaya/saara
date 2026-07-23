@@ -200,6 +200,42 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('a child task listed before its parent still imports', () async {
+      // Foreign keys are enforced, and the merge inserts tasks in list order.
+      // A recurring occurrence references its template via parentRecurringId; if
+      // the occurrence is listed first, an immediate FK check would blow up the
+      // whole transaction and NOTHING would sync — which is what a real bundle
+      // can look like after rows are reordered by a prior merge.
+      await addArea(deviceA, 'health');
+      await addTask(deviceA, 'template', areaId: 'health');
+      // The instance points at the template.
+      await deviceA
+          .into(deviceA.tasks)
+          .insert(
+            TasksCompanion.insert(
+              id: 'occurrence',
+              title: 'occurrence',
+              areaId: const Value('health'),
+              parentRecurringId: const Value('template'),
+              publicationState: const Value(PublicationState.released),
+              createdAt: t0,
+              updatedAt: t0,
+            ),
+          );
+
+      final bundle = await syncA.exportBundle();
+      // Force the worst order: child first.
+      final tasks = (bundle['tasks'] as List).toList();
+      tasks.sort((a, b) => a['id'] == 'occurrence' ? -1 : 1);
+      bundle['tasks'] = tasks;
+
+      final summary = await syncB.importBundle(bundle);
+
+      expect(summary.tasks, 2, reason: 'both tasks must land, order be damned');
+      expect(await deviceB.taskDao.findById('occurrence'), isNotNull);
+      expect(await deviceB.taskDao.findById('template'), isNotNull);
+    });
   });
 
   group('watched folder', () {
@@ -296,6 +332,40 @@ void main() {
       await expectLater(
         syncA.syncWatchedFolder(gone, 'pw'),
         throwsA(isA<FileSystemException>()),
+      );
+    });
+  });
+
+  group('plain export needs no password', () {
+    test('a plain file imports with no passphrase at all', () async {
+      await addArea(deviceA, 'health');
+      await addTask(deviceA, 't1', title: 'Morning walk', areaId: 'health');
+      await addEntry(deviceA, 'e1', 't1');
+
+      final content = await syncA.exportJson();
+      expect(syncB.isEncrypted(content), isFalse);
+
+      final summary = await syncB.importFile(content); // no passphrase
+      expect(summary.tasks, 1);
+      expect((await deviceB.taskDao.findById('t1'))!.title, 'Morning walk');
+    });
+
+    test('importFile detects and decrypts a protected file', () async {
+      await addTask(deviceA, 't1', title: 'secret');
+      final content = await syncA.exportEncrypted('pw');
+      expect(syncB.isEncrypted(content), isTrue);
+
+      final summary = await syncB.importFile(content, passphrase: 'pw');
+      expect(summary.tasks, 1);
+    });
+
+    test('a protected file without the password says so clearly', () async {
+      await addTask(deviceA, 't1');
+      final content = await syncA.exportEncrypted('pw');
+
+      await expectLater(
+        syncB.importFile(content), // forgot the password
+        throwsFormatException,
       );
     });
   });
