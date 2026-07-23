@@ -150,7 +150,10 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // Open maximized: the fixed 1280x720 default left Saara in a window slightly
+  // smaller than the screen, which reads as "not quite opened". The user can
+  // still restore/resize; this only sets the initial state.
+  return ShowWindow(window_handle_, SW_SHOWMAXIMIZED);
 }
 
 // static

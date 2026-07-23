@@ -12,6 +12,7 @@ import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../domain/sense_interpreter.dart';
 import '../../providers.dart';
+import '../../services/app_settings.dart';
 import '../../services/geofence_service.dart';
 import '../../services/google/meeting_note_tag.dart';
 import '../../services/notification_service.dart';
@@ -113,7 +114,14 @@ class TaskDetailScreen extends ConsumerWidget {
             return const Center(child: Text('Task not found.'));
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            // Bottom system inset added so the Actions/History at the foot of
+            // the page clear the gesture nav bar on edge-to-edge Android.
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              16 + MediaQuery.of(context).padding.bottom,
+            ),
             children: [
               Text(
                 task.title,
@@ -135,6 +143,7 @@ class TaskDetailScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               _AreaRow(task: task),
               const SizedBox(height: 8),
+              _Provenance(task: task),
               _Participants(taskId: taskId),
               if (task.kind == TaskKind.event) ...[
                 const SizedBox(height: 16),
@@ -1378,6 +1387,90 @@ class _ActionItemsSection extends ConsumerWidget {
 }
 
 /// §11 on-device participants for the task (hidden when there are none).
+/// Where this task came from, and when it last touched Google — the provenance
+/// the user asked to see (§9). Source (Saara / Google Tasks / Google Calendar)
+/// plus, from the ledger, *which* device first wrote it ("Desktop" / "Mobile"),
+/// and how long since it last synced. Silent when there's nothing to say.
+class _Provenance extends ConsumerWidget {
+  const _Provenance({required this.task});
+  final Task task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.watch(appDatabaseProvider);
+    final settings = ref.watch(appSettingsProvider);
+    // Recomputed when the ledger changes (e.g. a sync learns the device name).
+    ref.watch(taskTransitionsProvider(task.id));
+    return FutureBuilder<String?>(
+      future: _describe(db, settings),
+      builder: (context, snap) {
+        final text = snap.data;
+        if (text == null || text.isEmpty) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Icon(
+                Icons.devices_outlined,
+                size: 16,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  text,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _describe(AppDatabase db, AppSettings settings) async {
+    final origin = switch (task.source) {
+      TaskSource.gcalEvent => 'From Google Calendar',
+      TaskSource.gcalSync => 'From Google Tasks',
+      _ => 'Added in Saara',
+    };
+
+    // Which device first wrote it — from the created entry in the ledger.
+    String? deviceLabel;
+    final entries = await db.taskDao.transitionsFor(task.id);
+    if (entries.isNotEmpty) {
+      final created = entries.firstWhere(
+        (e) => e.kind == LedgerEventKind.created,
+        orElse: () => entries.first,
+      );
+      final myId = await db.deviceId();
+      deviceLabel = await settings.deviceLabel(
+        created.deviceId,
+        myDeviceId: myId,
+      );
+    }
+    final where = deviceLabel != null ? '$origin on $deviceLabel' : origin;
+
+    final synced = task.lastSyncedAt;
+    final syncedStr = synced == null
+        ? 'not synced yet'
+        : 'synced ${_ago(synced)}';
+    return '$where · $syncedStr';
+  }
+
+  static String _ago(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inDays >= 1) return '${d.inDays}d ago';
+    if (d.inHours >= 1) return '${d.inHours}h ago';
+    if (d.inMinutes >= 1) return '${d.inMinutes}m ago';
+    return 'just now';
+  }
+}
+
 class _Participants extends ConsumerWidget {
   const _Participants({required this.taskId});
   final String taskId;

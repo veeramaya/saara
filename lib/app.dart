@@ -57,6 +57,7 @@ class _RootShellState extends ConsumerState<_RootShell>
     // Foreground auto-sync (§9): on open, on resume, and periodically while
     // open. Background (app closed) sync is the WorkManager job (opt-in).
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _registerDevice());
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoSync());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoach());
     _syncTimer = Timer.periodic(
@@ -93,6 +94,18 @@ class _RootShellState extends ConsumerState<_RootShell>
     } catch (_) {
       // coach is non-critical — never block the app if it fails
     }
+  }
+
+  /// Name this device in the registry (§9) so the ledger — and the provenance
+  /// line on each task — can say "Desktop"/"Mobile" instead of a raw id. Cheap
+  /// and idempotent; never blocks the UI.
+  Future<void> _registerDevice() async {
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await ref
+          .read(appSettingsProvider)
+          .registerThisDevice(await db.deviceId());
+    } catch (_) {}
   }
 
   /// Silent Google Tasks reconcile if connected. Debounced so rapid

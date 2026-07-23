@@ -61,7 +61,14 @@ class ScheduleCheckScreen extends ConsumerWidget {
             );
           }
           return ListView(
-            padding: const EdgeInsets.all(12),
+            // Add the system inset to the bottom so the last card's actions
+            // clear the gesture nav bar on edge-to-edge Android.
+            padding: EdgeInsets.fromLTRB(
+              12,
+              12,
+              12,
+              12 + MediaQuery.of(context).padding.bottom,
+            ),
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),

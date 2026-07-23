@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saara/data/database.dart';
 import 'package:saara/domain/enums.dart';
+import 'package:saara/services/app_settings.dart';
 import 'package:saara/services/ledger_sync_service.dart';
 
 /// §9 device-to-device merge through the ledger file — `docs/LEDGER_DESIGN.md`.
@@ -425,6 +426,33 @@ void main() {
       );
       expect(forG1, hasLength(1));
       expect(await deviceB.taskDao.transitionsFor('m'), hasLength(1));
+    });
+  });
+
+  group('device names travel with the ledger', () {
+    test('a peer learns this device, so provenance can read "Desktop"', () async {
+      // Device A names itself on export; B learns it on import, and can then
+      // label a task A wrote. (The label is the host platform in tests, but the
+      // propagation is what matters.)
+      final settingsA = AppSettings(deviceA);
+      final settingsB = AppSettings(deviceB);
+      final idA = await deviceA.deviceId();
+      await settingsA.registerThisDevice(idA);
+
+      await addTask(deviceA, 't1');
+      await syncB.importJson(await syncA.exportJson());
+
+      final learned = await settingsB.knownDevices();
+      expect(
+        learned[idA],
+        settingsA.thisDeviceLabel,
+        reason: "the peer's label crossed in the bundle",
+      );
+      expect(
+        await settingsB.deviceLabel(idA),
+        isNotNull,
+        reason: 'B can now name the device that wrote the task',
+      );
     });
   });
 

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:drift/drift.dart' show Value;
 
 import '../data/database.dart';
@@ -13,6 +16,7 @@ class AppSettings {
   static const _coachSeen = 'coach_seen';
   static const _saaraValue = 'saara_value';
   static const _ledgerFolder = 'ledger_sync_folder';
+  static const _devices = 'known_devices';
 
   /// §9 Phase 3 — the folder Saara reads/writes its ledger file in, if the user
   /// set one. Null means device sync is manual (export/import). The path is not
@@ -108,6 +112,57 @@ class AppSettings {
 
   Future<bool> coachSeen() async => (await _read(_coachSeen)) == 'yes';
   Future<void> setCoachSeen() => _write(_coachSeen, 'yes');
+
+  // ---- device registry (§9) ------------------------------------------------
+  // Google can't tell you *which* of your devices made a task. The ledger can:
+  // every entry carries the deviceId that wrote it. This registry maps those
+  // ids to a human label ("Desktop", "Mobile") and travels in the sync bundle,
+  // so each device learns the others' names — the "carries what Google can't"
+  // idea, applied to provenance.
+
+  /// A human label for *this* device, from its platform.
+  String get thisDeviceLabel {
+    if (Platform.isAndroid || Platform.isIOS) return 'Mobile';
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return 'Desktop';
+    }
+    return 'This device';
+  }
+
+  /// deviceId → label for every device we've heard of (self and peers).
+  Future<Map<String, String>> knownDevices() async {
+    final raw = await _read(_devices);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final m = json.decode(raw) as Map<String, dynamic>;
+      return m.map((k, v) => MapEntry(k, v.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Records this device's own id → label, so it appears in exports and its own
+  /// UI. Idempotent.
+  Future<void> registerThisDevice(String deviceId) =>
+      learnDevices({deviceId: thisDeviceLabel});
+
+  /// Merge freshly-heard device labels in (from an imported bundle, or self).
+  Future<void> learnDevices(Map<String, String> devices) async {
+    if (devices.isEmpty) return;
+    final all = await knownDevices()
+      ..addAll(devices);
+    await _write(_devices, json.encode(all));
+  }
+
+  /// The label to show for a task created on [deviceId], from the perspective of
+  /// [myDeviceId]. Null when the device is unknown (e.g. a Google-only import
+  /// that never passed through the ledger).
+  Future<String?> deviceLabel(String? deviceId, {String? myDeviceId}) async {
+    if (deviceId == null || deviceId.isEmpty) return null;
+    final label = (await knownDevices())[deviceId];
+    if (deviceId == myDeviceId) return '${label ?? thisDeviceLabel} (this one)';
+    return label;
+  }
 
   /// §13 "Value by Saara" — a flat +1 each time Saara does the work (reads a
   /// task, runs a sync, auto-scores a result). Shows what the platform delivers.

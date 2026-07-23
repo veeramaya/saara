@@ -11,6 +11,7 @@ import 'package:pointycastle/digests/sha256.dart';
 
 import '../data/database.dart';
 import '../domain/enums.dart';
+import 'app_settings.dart';
 
 /// §9 device-to-device sync through a **ledger file** — never through Google
 /// (`docs/LEDGER_DESIGN.md`). Google carries interop with the outside world;
@@ -40,10 +41,17 @@ class LedgerSyncService {
     final areas = await db.select(db.areas).get();
     final results = await db.select(db.measurableResults).get();
 
+    // Make sure this device names itself before exporting, so the other side
+    // learns "Desktop"/"Mobile" for the entries we wrote.
+    final settings = AppSettings(db);
+    final deviceId = await db.deviceId();
+    await settings.registerThisDevice(deviceId);
+
     return {
       'bundleFormat': bundleFormat,
       'schemaVersion': db.schemaVersion,
-      'deviceId': await db.deviceId(),
+      'deviceId': deviceId,
+      'devices': await settings.knownDevices(),
       'tasks': [for (final t in tasks) t.toJson()],
       'ledger': [for (final e in entries) e.toJson()],
       'areas': [for (final a in areas) a.toJson()],
@@ -197,6 +205,16 @@ class LedgerSyncService {
       );
     }
 
+    // Learn the peer's device names (and its view of others), so a task it
+    // wrote shows "Desktop"/"Mobile" here too. Outside the transaction — it is
+    // display metadata, never a reason to fail a merge.
+    final incomingDevices = (bundle['devices'] as Map?)?.map(
+      (k, v) => MapEntry(k.toString(), v.toString()),
+    );
+    if (incomingDevices != null && incomingDevices.isNotEmpty) {
+      await AppSettings(db).learnDevices(incomingDevices);
+    }
+
     await db.transaction(() async {
       for (final j in (bundle['areas'] as List? ?? const [])) {
         final a = Area.fromJson(
@@ -299,10 +317,11 @@ class LedgerSyncService {
     DateTime? pickTime(DateTime? mine, DateTime? theirs) {
       final mineFlat = dateOnly(mine);
       final theirsFlat = dateOnly(theirs);
-      if (mineFlat && !theirsFlat)
-        return theirs; // their real time beats my date
-      if (!mineFlat && theirsFlat) return mine; //  keep my real time
-      return incomingNewer ? theirs : mine; //       same nature → newer wins
+      // Their real time beats my date-only; my real time survives their date.
+      if (mineFlat && !theirsFlat) return theirs;
+      if (!mineFlat && theirsFlat) return mine;
+      // Both the same nature → newer wins.
+      return incomingNewer ? theirs : mine;
     }
 
     // The newest stamp wins so onward syncs carry the reconciled row forward,
