@@ -217,28 +217,91 @@ class LedgerSyncService {
           summary.results++;
         }
       }
+      // Tasks. An incoming task whose Google id already exists locally under a
+      // *different* local id is the same real item imported from Google on both
+      // devices (an invite, a pushed task). We do NOT add a second row — we fold
+      // the incoming's Saara-only fields into the local one, and remember the id
+      // mapping so its ledger entries attach to the right task (§9 unify).
+      final idRemap = <String, String>{};
       for (final j in (bundle['tasks'] as List? ?? const [])) {
         final t = Task.fromJson(
           j as Map<String, dynamic>,
           serializer: _serializer,
         );
+        final gcal = t.gcalEventId;
+        if (gcal != null && gcal.isNotEmpty) {
+          final twin = await db.taskDao.findByGcalEventIdExcept(gcal, t.id);
+          if (twin != null) {
+            idRemap[t.id] = twin.id;
+            await _mergeSaaraFields(twin, t);
+            summary.tasks++;
+            continue;
+          }
+        }
         if (await _isNewer(db.tasks, t.id, t.updatedAt)) {
           await db.into(db.tasks).insertOnConflictUpdate(t);
           summary.tasks++;
         }
       }
+      // Ledger, append-only. Remap the taskId of any entry whose task was folded
+      // into a local twin, so history lands on the surviving row.
       for (final j in (bundle['ledger'] as List? ?? const [])) {
-        final e = TaskTransition.fromJson(
+        var e = TaskTransition.fromJson(
           j as Map<String, dynamic>,
           serializer: _serializer,
         );
+        final mapped = idRemap[e.taskId];
+        if (mapped != null) e = e.copyWith(taskId: mapped);
         if (!await _exists(db.taskTransitions, e.id)) {
           await db.into(db.taskTransitions).insert(e);
           summary.ledgerEntries++;
         }
       }
+      // Area follows the ledger, not the mutable row (§4.3): after merging, set
+      // each task's area from its latest correction, so a Google refresh — which
+      // bumps updatedAt but writes no correction — can never overwrite a filing.
+      await _applyLedgerAreas();
     });
     return summary;
+  }
+
+  /// Fold an incoming task's **Saara-only** fields into an existing local twin
+  /// (same Google id). Google-owned facts — time, title, location — are left to
+  /// the local copy, which pulled them from the same Google source. Only the
+  /// fields Google can't carry, and only when the incoming is newer, are taken.
+  Future<void> _mergeSaaraFields(Task local, Task incoming) async {
+    if (!incoming.updatedAt.isAfter(local.updatedAt)) return;
+    await (db.update(db.tasks)..where((t) => t.id.equals(local.id))).write(
+      TasksCompanion(
+        publicationState: Value(incoming.publicationState),
+        durationMin: Value(incoming.durationMin),
+        reminderOffsets: Value(incoming.reminderOffsets),
+        reviewNotes: Value(incoming.reviewNotes),
+        geofenceEnabled: Value(incoming.geofenceEnabled),
+        lat: Value(incoming.lat),
+        lng: Value(incoming.lng),
+        priority: Value(incoming.priority),
+        // areaId intentionally omitted — set from the ledger in _applyLedgerAreas.
+        updatedAt: Value(incoming.updatedAt),
+      ),
+    );
+  }
+
+  /// Sets each task's area from its most recent `corrected` ledger entry. The
+  /// ledger is append-only and merges conflict-free, so this is immune to the
+  /// `updatedAt` races that plague the mutable row.
+  Future<void> _applyLedgerAreas() async {
+    final corrections = await db.taskDao.allCorrections();
+    final latest = <String, TaskTransition>{};
+    for (final c in corrections) {
+      final seen = latest[c.taskId];
+      if (seen == null || c.at.isAfter(seen.at)) latest[c.taskId] = c;
+    }
+    for (final entry in latest.entries) {
+      await (db.update(db.tasks)..where((t) => t.id.equals(entry.key))).write(
+        TasksCompanion(areaId: Value(entry.value.areaId)),
+      );
+    }
   }
 
   Future<MergeSummary> importJson(String jsonStr) =>

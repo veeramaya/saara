@@ -217,6 +217,158 @@ void main() {
     });
   });
 
+  group('same Google item, two devices — unify, do not duplicate', () {
+    // The user's exact case. An external event is imported from Google on BOTH
+    // devices, each minting its own local id but sharing the gcalEventId. Ledger
+    // sync must recognise them as one thing — attach the area and history to the
+    // single local row, not create a second.
+    Future<void> googleImport(
+      AppDatabase db,
+      String localId,
+      String gcalId, {
+      String title = 'Coaches meeting',
+    }) => db
+        .into(db.tasks)
+        .insert(
+          TasksCompanion.insert(
+            id: localId,
+            title: title,
+            gcalEventId: Value(gcalId),
+            source: const Value(TaskSource.gcalEvent),
+            publicationState: const Value(PublicationState.released),
+            scheduledStart: Value(t0),
+            createdAt: t0,
+            updatedAt: t0,
+          ),
+        );
+
+    test('area and history land on the one local task, no duplicate', () async {
+      // Same event 'G1', different local ids on each device.
+      await addArea(deviceA, 'work');
+      await googleImport(deviceA, 'desktop-id', 'G1');
+      await googleImport(deviceB, 'mobile-id', 'G1');
+
+      // Desktop files it under Work and completes it — recorded in the ledger.
+      await (deviceA.update(
+        deviceA.tasks,
+      )..where((t) => t.id.equals('desktop-id'))).write(
+        TasksCompanion(
+          areaId: const Value('work'),
+          updatedAt: Value(t0.add(const Duration(hours: 1))),
+        ),
+      );
+      await deviceA
+          .into(deviceA.taskTransitions)
+          .insert(
+            TaskTransitionsCompanion.insert(
+              id: 'corr1',
+              taskId: 'desktop-id',
+              kind: const Value(LedgerEventKind.corrected),
+              toStatus: TaskStatus.created,
+              areaId: const Value('work'),
+              at: t0.add(const Duration(hours: 1)),
+            ),
+          );
+      await deviceA
+          .into(deviceA.taskTransitions)
+          .insert(
+            TaskTransitionsCompanion.insert(
+              id: 'done1',
+              taskId: 'desktop-id',
+              toStatus: TaskStatus.completed,
+              areaId: const Value('work'),
+              at: t0.add(const Duration(hours: 2)),
+            ),
+          );
+
+      await syncB.importJson(await syncA.exportJson());
+
+      // Mobile still has exactly ONE task for G1 — its own id, not a duplicate.
+      final forG1 = (await deviceB.taskDao.allTasks())
+          .where((t) => t.gcalEventId == 'G1')
+          .toList();
+      expect(forG1, hasLength(1), reason: 'no second row for the same event');
+      expect(forG1.single.id, 'mobile-id', reason: 'the local id survives');
+      expect(
+        forG1.single.areaId,
+        'work',
+        reason: 'area crossed via the ledger',
+      );
+
+      // The history attached to the surviving mobile row.
+      final history = await deviceB.taskDao.transitionsFor('mobile-id');
+      expect(
+        history.map((e) => e.id).toSet(),
+        {'corr1', 'done1'},
+        reason: 'ledger entries remapped onto the local twin',
+      );
+    });
+
+    test('a Google refresh cannot overwrite a filing (area from ledger)', () async {
+      // The integrity trap: a Google pull bumps updatedAt without a correction.
+      await addArea(deviceA, 'work');
+      await addArea(deviceB, 'work');
+      await googleImport(deviceA, 'd', 'G1');
+      await googleImport(deviceB, 'm', 'G1');
+
+      // Desktop files it Work (with a correction) at 10:00.
+      await deviceA
+          .into(deviceA.taskTransitions)
+          .insert(
+            TaskTransitionsCompanion.insert(
+              id: 'c1',
+              taskId: 'd',
+              kind: const Value(LedgerEventKind.corrected),
+              toStatus: TaskStatus.created,
+              areaId: const Value('work'),
+              at: t0.add(const Duration(hours: 10)),
+            ),
+          );
+      // Mobile's row was refreshed by Google LATER (updatedAt 11:00) but with NO
+      // correction and no area.
+      await (deviceB.update(
+        deviceB.tasks,
+      )..where((t) => t.id.equals('m'))).write(
+        TasksCompanion(updatedAt: Value(t0.add(const Duration(hours: 11)))),
+      );
+
+      await syncB.importJson(await syncA.exportJson());
+
+      final m = await deviceB.taskDao.findById('m');
+      expect(
+        m!.areaId,
+        'work',
+        reason: 'the ledger correction wins over the newer Google-pull row',
+      );
+    });
+
+    test('unifying is idempotent across repeated syncs', () async {
+      await addArea(deviceA, 'work');
+      await googleImport(deviceA, 'd', 'G1');
+      await googleImport(deviceB, 'm', 'G1');
+      await deviceA
+          .into(deviceA.taskTransitions)
+          .insert(
+            TaskTransitionsCompanion.insert(
+              id: 'e1',
+              taskId: 'd',
+              toStatus: TaskStatus.completed,
+              at: t0.add(const Duration(hours: 1)),
+            ),
+          );
+
+      final bundle = await syncA.exportJson();
+      await syncB.importJson(bundle);
+      await syncB.importJson(bundle);
+
+      final forG1 = (await deviceB.taskDao.allTasks()).where(
+        (t) => t.gcalEventId == 'G1',
+      );
+      expect(forG1, hasLength(1));
+      expect(await deviceB.taskDao.transitionsFor('m'), hasLength(1));
+    });
+  });
+
   group('safety', () {
     test('a bundle from a newer format is refused, not half-applied', () async {
       await expectLater(

@@ -79,6 +79,23 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   Future<Task?> findById(String id) =>
       (select(tasks)..where((t) => t.id.equals(id))).getSingleOrNull();
 
+  /// A local task carrying [gcalEventId] whose id is **not** [exceptId] — the
+  /// same real Google item under a different local id. Used by ledger merge to
+  /// recognise that a task imported from Google on one device and imported on
+  /// another are one thing, not two (§9).
+  Future<Task?> findByGcalEventIdExcept(String gcalEventId, String exceptId) =>
+      (select(tasks)
+            ..where((t) => t.gcalEventId.equals(gcalEventId))
+            ..where((t) => t.id.equals(exceptId).not()))
+          .getSingleOrNull();
+
+  /// Every non-deleted task's latest area-correction, for post-merge area
+  /// authority (§4.3). Area follows the ledger, never the mutable row's
+  /// last-write time, so a Google refresh can't quietly overwrite a filing.
+  Future<List<TaskTransition>> allCorrections() => (select(
+    taskTransitions,
+  )..where((t) => t.kind.equalsValue(LedgerEventKind.corrected))).get();
+
   /// Non-deleted tasks assigned to [areaId] (§7.5 area task list). Recurring
   /// templates are excluded — only concrete instances/one-offs are actionable.
   Future<List<Task>> tasksForArea(String areaId) {
