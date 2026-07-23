@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -196,6 +198,104 @@ void main() {
       await expectLater(
         syncB.importBundle({'bundleFormat': 999, 'tasks': []}),
         throwsStateError,
+      );
+    });
+  });
+
+  group('watched folder', () {
+    late Directory folder;
+
+    setUp(() => folder = Directory.systemTemp.createTempSync('saara-sync'));
+    tearDown(() {
+      if (folder.existsSync()) folder.deleteSync(recursive: true);
+    });
+
+    test('each device writes its own file — no shared file to clash', () async {
+      await addTask(deviceA, 'a1');
+      await addTask(deviceB, 'b1');
+
+      await syncA.syncWatchedFolder(folder, 'pw');
+      await syncB.syncWatchedFolder(folder, 'pw');
+
+      final files = folder
+          .listSync()
+          .whereType<File>()
+          .map((f) => f.uri.pathSegments.last)
+          .toList();
+      expect(files, hasLength(2), reason: 'one file per device, keyed by id');
+      expect(files.every((n) => n.endsWith('.saara')), isTrue);
+    });
+
+    test('a pass writes ours, then merges every peer', () async {
+      await addArea(deviceA, 'health');
+      await addTask(deviceA, 'a1', title: 'from A', areaId: 'health');
+
+      // A publishes; B syncs and should pull A in.
+      await syncA.syncWatchedFolder(folder, 'pw');
+      final r = await syncB.syncWatchedFolder(folder, 'pw');
+
+      expect(r.peersRead, 1);
+      expect(r.merged.tasks, 1);
+      expect((await deviceB.taskDao.findById('a1'))!.title, 'from A');
+    });
+
+    test('two devices converge to the same record', () async {
+      await addArea(deviceA, 'health');
+      await addTask(deviceA, 'a1', areaId: 'health');
+      await addArea(deviceB, 'health');
+      await addTask(deviceB, 'b1', areaId: 'health');
+
+      // A couple of rounds, as would happen over time.
+      await syncA.syncWatchedFolder(folder, 'pw');
+      await syncB.syncWatchedFolder(folder, 'pw');
+      await syncA.syncWatchedFolder(folder, 'pw');
+
+      final onA = (await deviceA.taskDao.allTasks()).map((t) => t.id).toSet();
+      final onB = (await deviceB.taskDao.allTasks()).map((t) => t.id).toSet();
+      expect(onA, {'a1', 'b1'});
+      expect(onB, {'a1', 'b1'});
+    });
+
+    test('re-running a pass with no changes merges nothing new', () async {
+      await addTask(deviceA, 'a1');
+      await syncA.syncWatchedFolder(folder, 'pw');
+      final second = await syncB.syncWatchedFolder(folder, 'pw');
+      final third = await syncB.syncWatchedFolder(folder, 'pw');
+
+      expect(second.merged.tasks, 1);
+      expect(third.merged.isEmpty, isTrue, reason: 'idempotent across passes');
+    });
+
+    test('an unreadable peer file is skipped, not fatal', () async {
+      await addTask(deviceA, 'a1');
+      await syncA.syncWatchedFolder(folder, 'pw');
+      // A junk file a cloud client might drop mid-download.
+      File(
+        '${folder.path}/saara-ledger-broken.saara',
+      ).writeAsStringSync('not valid encrypted json');
+
+      final r = await syncB.syncWatchedFolder(folder, 'pw');
+
+      expect(r.peersSkipped, 1);
+      expect(r.peersRead, 1, reason: 'the good file still merges');
+      expect(await deviceB.taskDao.findById('a1'), isNotNull);
+    });
+
+    test('a wrong-passphrase peer is skipped, not merged as garbage', () async {
+      await addTask(deviceA, 'a1');
+      await syncA.syncWatchedFolder(folder, 'secretA');
+
+      final r = await syncB.syncWatchedFolder(folder, 'differentB');
+
+      expect(r.peersSkipped, 1);
+      expect(await deviceB.taskDao.findById('a1'), isNull);
+    });
+
+    test('a missing folder is a clear error, not a silent no-op', () async {
+      final gone = Directory('${folder.path}/does-not-exist');
+      await expectLater(
+        syncA.syncWatchedFolder(gone, 'pw'),
+        throwsA(isA<FileSystemException>()),
       );
     });
   });

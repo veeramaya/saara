@@ -12,6 +12,22 @@ class AppSettings {
   static const _lastSync = 'google_last_sync';
   static const _coachSeen = 'coach_seen';
   static const _saaraValue = 'saara_value';
+  static const _ledgerFolder = 'ledger_sync_folder';
+
+  /// §9 Phase 3 — the folder Saara reads/writes its ledger file in, if the user
+  /// set one. Null means device sync is manual (export/import). The path is not
+  /// a secret; the passphrase that protects the files is, and lives in the OS
+  /// keystore (see [AiConfigStore]-style secure storage), never here.
+  Future<String?> ledgerFolder() => _read(_ledgerFolder);
+  Future<void> setLedgerFolder(String? path) async {
+    if (path == null || path.isEmpty) {
+      await (db.delete(
+        db.settings,
+      )..where((s) => s.key.equals(_ledgerFolder))).go();
+    } else {
+      await _write(_ledgerFolder, path);
+    }
+  }
 
   Future<String?> _read(String key) async {
     final row = await (db.select(

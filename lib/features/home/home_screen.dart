@@ -55,6 +55,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
     ref.watch(materializeRecurringProvider);
 
+    // §9 Phase 3 — pull in the other device's ledger on open. When a pass
+    // actually merges something, refresh the views it touched.
+    ref.listen(ledgerAutoSyncProvider, (_, next) {
+      next.whenData((result) {
+        if (result != null && !result.merged.isEmpty) {
+          ref.invalidate(allTasksProvider);
+          ref.invalidate(tasksForDayProvider);
+          ref.invalidate(tasksBetweenProvider);
+          ref.invalidate(unscheduledTasksProvider);
+          ref.invalidate(areaScoresProvider);
+          ref.invalidate(overallEffectivenessProvider);
+        }
+      });
+    });
+    ref.watch(ledgerAutoSyncProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(

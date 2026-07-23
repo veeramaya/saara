@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:drift/drift.dart';
@@ -94,6 +95,58 @@ class LedgerSyncService {
 
   /// Import an encrypted bundle. Throws a clear error on the wrong passphrase or
   /// a corrupt file rather than merging garbage.
+  // ---- watched folder (§9 Phase 3) ----------------------------------------
+
+  /// The file this device writes. **Keyed by device id**, so two devices
+  /// pointed at the same folder never write the same file — there is no write
+  /// conflict to resolve, ever. If the folder happens to be a synced one
+  /// (OneDrive, a shared SSD), propagation is automatic; Saara only ever does
+  /// filesystem I/O and never talks to any cloud API (§1.4).
+  String ownFileName(String deviceId) => 'saara-ledger-$deviceId.saara';
+
+  /// Write this device's record to [dir], then merge every *other* device's
+  /// file found there. [passphrase] protects all of them.
+  ///
+  /// A peer file that can't be read — wrong passphrase, half-written by a cloud
+  /// client mid-download, corrupt — is skipped, not fatal. Sync should make
+  /// progress on the files it *can* read rather than stall on one it can't.
+  Future<FolderSyncResult> syncWatchedFolder(
+    Directory dir,
+    String passphrase,
+  ) async {
+    if (!await dir.exists()) {
+      throw FileSystemException('Sync folder not found', dir.path);
+    }
+    final deviceId = await db.deviceId();
+    final ownName = ownFileName(deviceId);
+    final own = File('${dir.path}/$ownName');
+
+    // Write our own file first, so the other device sees our latest.
+    await own.writeAsString(await exportEncrypted(passphrase));
+
+    final result = FolderSyncResult();
+    for (final entity in dir.listSync()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!name.endsWith('.saara')) continue;
+      // Skip our own by *name*, not full path — path strings differ by slash
+      // direction across platforms, and comparing them would let a device merge
+      // its own file back in.
+      if (name == ownName) continue;
+      try {
+        final merged = await importEncrypted(
+          await entity.readAsString(),
+          passphrase,
+        );
+        result.merged.add(merged);
+        result.peersRead++;
+      } catch (_) {
+        result.peersSkipped++;
+      }
+    }
+    return result;
+  }
+
   Future<MergeSummary> importEncrypted(
     String armored,
     String passphrase,
@@ -233,10 +286,42 @@ class MergeSummary {
   int get total => tasks + ledgerEntries + areas + results;
   bool get isEmpty => total == 0;
 
+  void add(MergeSummary other) {
+    tasks += other.tasks;
+    ledgerEntries += other.ledgerEntries;
+    areas += other.areas;
+    results += other.results;
+  }
+
   @override
   String toString() =>
       'Merged $tasks task${tasks == 1 ? '' : 's'}, '
       '$ledgerEntries ledger entr${ledgerEntries == 1 ? 'y' : 'ies'}, '
       '$areas area${areas == 1 ? '' : 's'}, '
       '$results result${results == 1 ? '' : 's'}';
+}
+
+/// The outcome of one watched-folder pass: what merged, and how many peer files
+/// were read versus skipped (unreadable / mid-download / wrong passphrase).
+class FolderSyncResult {
+  final MergeSummary merged = MergeSummary();
+  int peersRead = 0;
+  int peersSkipped = 0;
+
+  @override
+  String toString() {
+    if (peersRead == 0 && peersSkipped == 0) {
+      return 'Saved. No other device has written here yet.';
+    }
+    final parts = <String>[
+      if (merged.isEmpty) 'Already up to date' else merged.toString(),
+    ];
+    if (peersSkipped > 0) {
+      parts.add(
+        '$peersSkipped file${peersSkipped == 1 ? '' : 's'} skipped '
+        '(unreadable or still downloading)',
+      );
+    }
+    return parts.join(' · ');
+  }
 }

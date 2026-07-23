@@ -16,6 +16,7 @@ import 'domain/task_state_machine.dart';
 import 'services/ai/ai_config.dart';
 import 'services/app_settings.dart';
 import 'services/export_service.dart';
+import 'services/ledger_folder_sync.dart';
 import 'services/ledger_sync_service.dart';
 import 'services/reset_service.dart';
 import 'services/storage_service.dart';
@@ -52,6 +53,24 @@ final resetServiceProvider = Provider<ResetService>(
 final ledgerSyncServiceProvider = Provider<LedgerSyncService>(
   (ref) => LedgerSyncService(ref.watch(appDatabaseProvider)),
 );
+
+/// §9 Phase 3 — the automatic watched-folder side of ledger sync.
+final ledgerFolderSyncProvider = Provider<LedgerFolderSync>(
+  (ref) => LedgerFolderSync(
+    settings: ref.watch(appSettingsProvider),
+    sync: ref.watch(ledgerSyncServiceProvider),
+  ),
+);
+
+/// Runs one watched-folder pass on app open, if configured. Null when off.
+/// Watched by the home screen so a fresh sync lands before the timeline paints.
+final ledgerAutoSyncProvider = FutureProvider<FolderSyncResult?>((ref) async {
+  try {
+    return await ref.watch(ledgerFolderSyncProvider).syncNow();
+  } catch (_) {
+    return null; // a missing/renamed folder must not block startup
+  }
+});
 
 /// §7.6 on-device media accounting + cleanup.
 final storageServiceProvider = Provider<StorageService>(

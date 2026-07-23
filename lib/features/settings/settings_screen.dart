@@ -311,12 +311,128 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               onTap: () => Navigator.pop(ctx, 'import'),
             ),
+            const Divider(),
+            FutureBuilder<bool>(
+              future: ref.read(ledgerFolderSyncProvider).isConfigured,
+              builder: (context, snap) {
+                final on = snap.data ?? false;
+                return ListTile(
+                  leading: Icon(
+                    on ? Icons.folder_shared : Icons.folder_open_outlined,
+                  ),
+                  title: Text(
+                    on ? 'Automatic folder sync — on' : 'Set up automatic sync',
+                  ),
+                  subtitle: Text(
+                    on
+                        ? 'Saara syncs through your folder on open. Tap to '
+                              'change or turn off.'
+                        : 'Pick a folder both devices can see (a synced drive, '
+                              'OneDrive…) and Saara keeps them in step',
+                  ),
+                  onTap: () =>
+                      Navigator.pop(ctx, on ? 'folder-manage' : 'folder-on'),
+                );
+              },
+            ),
           ],
         ),
       ),
     );
     if (choice == 'export') await _ledgerExport();
     if (choice == 'import') await _ledgerImport();
+    if (choice == 'folder-on') await _folderSyncEnable();
+    if (choice == 'folder-manage') await _folderSyncManage();
+  }
+
+  Future<void> _folderSyncEnable() async {
+    final dir = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose a folder both devices can see',
+    );
+    if (dir == null || !mounted) return;
+    final passphrase = await _askPassphrase(creating: true);
+    if (passphrase == null || passphrase.isEmpty || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _ledgerBusy = true);
+    try {
+      final result = await ref
+          .read(ledgerFolderSyncProvider)
+          .enable(dir, passphrase);
+      _refreshAfterMerge();
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 5),
+            content: Text('Folder sync on. $result'),
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not set up: $e')));
+    } finally {
+      if (mounted) setState(() => _ledgerBusy = false);
+    }
+  }
+
+  Future<void> _folderSyncManage() async {
+    final path = await ref.read(ledgerFolderSyncProvider).folderPath();
+    if (!mounted) return;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Automatic folder sync'),
+        content: Text('Syncing through:\n$path'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'off'),
+            child: const Text('Turn off'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'now'),
+            child: const Text('Sync now'),
+          ),
+        ],
+      ),
+    );
+    if (choice == 'off') {
+      await ref.read(ledgerFolderSyncProvider).disable();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Folder sync turned off.')),
+        );
+      }
+    } else if (choice == 'now') {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      setState(() => _ledgerBusy = true);
+      try {
+        final result = await ref.read(ledgerFolderSyncProvider).syncNow();
+        _refreshAfterMerge();
+        if (mounted && result != null) {
+          messenger.showSnackBar(SnackBar(content: Text(result.toString())));
+        }
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(content: Text('Sync failed: $e')));
+      } finally {
+        if (mounted) setState(() => _ledgerBusy = false);
+      }
+    }
+  }
+
+  void _refreshAfterMerge() {
+    ref.invalidate(allTasksProvider);
+    ref.invalidate(unscheduledTasksProvider);
+    ref.invalidate(tasksForDayProvider);
+    ref.invalidate(tasksBetweenProvider);
+    ref.invalidate(scheduleConflictsProvider);
+    ref.invalidate(activeAreasProvider);
+    ref.invalidate(areaScoresProvider);
+    ref.invalidate(overallEffectivenessProvider);
   }
 
   /// Ask for the passphrase that protects the ledger file. The same one is set
