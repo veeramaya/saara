@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 import 'package:sqlite3/open.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import '../core/data_dir.dart';
 
@@ -70,6 +71,40 @@ LazyDatabase openEncryptedConnection() {
       p.join(dir.path, encrypt ? _dbFileEncrypted : _dbFilePlain),
     );
     final passphrase = encrypt ? await _obtainPassphrase() : null;
+
+    // Self-heal an orphaned database. If the encrypted file exists but the key
+    // no longer decrypts it — which happens if the key was ever lost while the
+    // file remained — every query fails with "file is not a database" and the
+    // app is unusable. The file is unrecoverable without its key, so the only
+    // honest option is to start fresh: delete it and let a new one be created.
+    // Cheap and safe when the key IS right (one probe query), decisive when it
+    // isn't.
+    if (encrypt && passphrase != null && await file.exists()) {
+      try {
+        final probe = sqlite3.open(file.path);
+        try {
+          probe.execute("PRAGMA key = '$passphrase';");
+          probe.select(
+            'PRAGMA user_version;',
+          ); // decrypts the header, or throws
+        } finally {
+          probe.dispose();
+        }
+      } catch (_) {
+        // Key mismatch (or a corrupt file). Nothing here is readable; recreate.
+        try {
+          await file.delete();
+        } catch (_) {}
+        for (final suffix in ['-wal', '-shm']) {
+          final side = File('${file.path}$suffix');
+          if (await side.exists()) {
+            try {
+              await side.delete();
+            } catch (_) {}
+          }
+        }
+      }
+    }
 
     return NativeDatabase(
       file,

@@ -29,6 +29,10 @@ class ResetService {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
+  /// The SQLCipher database key — MUST match `_dbKeyStorageKey` in
+  /// `data/connection.dart`. Preserved across a reset (see below).
+  static const _dbPassphraseKey = 'saara_db_passphrase';
+
   /// Deletes every row, every captured file, and every stored credential, then
   /// re-seeds the starter areas so the app opens in a usable first-run state.
   ///
@@ -63,9 +67,20 @@ class ResetService {
       // A locked or missing file must not leave the reset half-done.
     }
 
-    // API keys and Google tokens live in the OS keystore, never the database.
+    // Clear the app's own secrets — API keys, Google tokens, the ledger-sync
+    // passphrase — but NOT the database's encryption key.
+    //
+    // Reset empties the database's *rows*; the file itself stays. Deleting its
+    // key while the encrypted file remains would orphan the database — next
+    // launch would mint a new key, fail to decrypt the old file, and the app
+    // would open to "file is not a database". So the DB key is preserved across
+    // the wipe.
     try {
+      final dbKey = await _secure.read(key: _dbPassphraseKey);
       await _secure.deleteAll();
+      if (dbKey != null) {
+        await _secure.write(key: _dbPassphraseKey, value: dbKey);
+      }
     } catch (_) {}
 
     // Leave the app in a usable first-run state rather than an empty shell —
