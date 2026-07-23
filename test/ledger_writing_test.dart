@@ -225,6 +225,59 @@ void main() {
     });
   });
 
+  group('a time block routes to the calendar, not to-dos', () {
+    // Google Tasks can't hold a clock time, so a timed task pushed there loses
+    // it. A task given a duration is a time block and must be an event, which
+    // syncs to Google Calendar (which keeps the time) instead.
+    test('a duration makes a new task an event', () async {
+      final t = await service.create(
+        TasksCompanion.insert(
+          id: 'c1',
+          title: 'Check ledger',
+          scheduledStart: Value(now.add(const Duration(hours: 5, minutes: 19))),
+          durationMin: const Value(15),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      expect(t.kind, TaskKind.event);
+    });
+
+    test('a bare to-do (no duration) stays a task', () async {
+      final t = await service.create(
+        TasksCompanion.insert(
+          id: 'c2',
+          title: 'Buy milk',
+          scheduledStart: Value(now),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      // Left unset, kind stays null — a legacy-null row that syncs to Google
+      // Tasks. What matters is it is *not* promoted to an event.
+      expect(t.kind, isNot(TaskKind.event));
+    });
+
+    test('a duration promotes even an explicit "task" to an event', () async {
+      // The card always sets kind explicitly (task or event), so "only promote
+      // when kind is unset" would never fire and the fix would be dead. A
+      // duration is an unambiguous "this occupies a span of clock time", which
+      // is what an event *is* — so it wins over the task/event toggle. Only an
+      // explicit `event` short-circuits (nothing to change).
+      final t = await service.create(
+        TasksCompanion.insert(
+          id: 'c3',
+          title: '2:19 PM, 15 min — really an appointment',
+          kind: const Value(TaskKind.task),
+          durationMin: const Value(30),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      expect(t.kind, TaskKind.event);
+    });
+  });
+
   group('the ledger is append-only', () {
     test('re-recording the same entry id is harmless', () async {
       final task = await addTask(areaId: 'health');

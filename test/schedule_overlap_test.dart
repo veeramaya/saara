@@ -49,6 +49,55 @@ void main() {
       expect(findConflicts([a, b]), isEmpty);
     });
 
+    test('bare to-dos on the same instant do not collide', () {
+      // The real-device bug: timed to-dos pushed to Google Tasks lose their
+      // clock time and come back at midnight UTC, so a whole day's errands land
+      // on one instant. They carry no duration and are not events — a due date
+      // is not a time block, so they must raise no overlap.
+      Task todo(String id, String title) => Task(
+        id: id,
+        title: title,
+        status: TaskStatus.created,
+        kind: TaskKind.task,
+        scheduledStart: DateTime.utc(2026, 7, 23), // date-only, midnight UTC
+        durationMin: null,
+        geofenceEnabled: false,
+        priority: 0,
+        publicationState: PublicationState.released,
+        source: TaskSource.gcalSync,
+        createdAt: DateTime(2026, 7, 23),
+        updatedAt: DateTime(2026, 7, 23),
+      );
+
+      final found = findConflicts([
+        todo('a', 'Check ledger'),
+        todo('b', 'test'),
+        todo('c', 'Test task delete'),
+      ]);
+      expect(found, isEmpty, reason: 'due dates are not time blocks');
+    });
+
+    test('a timed event still collides with a bare to-do sharing its slot', () {
+      // The event is a real time block; the to-do is not — so only the event
+      // pair can conflict. Here there is just one time block, so nothing does.
+      final ev = task('a', 'Meeting', DateTime(2026, 7, 21, 9), 60);
+      final todo = Task(
+        id: 'b',
+        title: 'Errand',
+        status: TaskStatus.created,
+        kind: TaskKind.task,
+        scheduledStart: DateTime(2026, 7, 21, 9),
+        durationMin: null,
+        geofenceEnabled: false,
+        priority: 0,
+        publicationState: PublicationState.released,
+        source: TaskSource.manual,
+        createdAt: DateTime(2026, 7, 21),
+        updatedAt: DateTime(2026, 7, 21),
+      );
+      expect(findConflicts([ev, todo]), isEmpty);
+    });
+
     test('suggests a slot but does not rank the two items', () {
       final meeting = task('a', 'Meeting', DateTime(2026, 7, 21, 9), 60);
       final kitchen = task('b', 'Kitchen', DateTime(2026, 7, 21, 9, 30), 30);

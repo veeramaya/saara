@@ -35,9 +35,22 @@ class ScheduleConflict {
 int _durMin(Task t) => t.durationMin ?? (t.kind == TaskKind.event ? 60 : 30);
 DateTime _end(Task t) => t.scheduledStart!.add(Duration(minutes: _durMin(t)));
 
+/// Only a **time block** occupies the clock. An event, or any task the user
+/// gave a duration, is a span that can genuinely collide with another. A plain
+/// to-do has a *due date*, not a span — two errands due the same day do not
+/// "overlap", and Saara must not invent a conflict between them.
+///
+/// This also excludes the date-only rows Google Tasks hands back: a timed task
+/// pushed to Google Tasks loses its clock time and returns at midnight UTC, so
+/// a whole day's to-dos would otherwise pile onto one instant and raise a
+/// cascade of phantom overlaps (they carry no duration, so they fall out here).
+bool _isTimeBlock(Task t) =>
+    t.scheduledStart != null &&
+    (t.kind == TaskKind.event || t.durationMin != null);
+
 /// Find overlapping pairs among scheduled items (sorted by start).
 List<ScheduleConflict> findConflicts(List<Task> items) {
-  final s = items.where((t) => t.scheduledStart != null).toList()
+  final s = items.where(_isTimeBlock).toList()
     ..sort((a, b) => a.scheduledStart!.compareTo(b.scheduledStart!));
   final out = <ScheduleConflict>[];
   for (var i = 0; i < s.length; i++) {

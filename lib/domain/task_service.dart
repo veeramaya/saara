@@ -114,11 +114,23 @@ class TaskService {
   /// for the deliberate draft, or for a review queue (capture, bulk import)
   /// whose items are not commitments until the user says so.
   Future<Task> create(TasksCompanion companion, {bool release = true}) async {
-    final withState = companion.copyWith(
+    var withState = companion.copyWith(
       publicationState: Value(
         release ? PublicationState.released : PublicationState.draft,
       ),
     );
+    // A task given a **duration** is a time block, not a bare due-date, so it
+    // belongs on Google Calendar (which keeps the clock time) rather than
+    // Google Tasks (date-only). Classifying it as an event routes it there —
+    // otherwise the time is stripped on push and the task returns to another
+    // device at midnight UTC (05:30 IST). The caller's explicit kind wins.
+    final alreadyEvent =
+        withState.kind.present && withState.kind.value == TaskKind.event;
+    final hasDuration =
+        withState.durationMin.present && withState.durationMin.value != null;
+    if (!alreadyEvent && hasDuration) {
+      withState = withState.copyWith(kind: const Value(TaskKind.event));
+    }
     await dao.insertTask(withState);
     final task = (await dao.findById(withState.id.value))!;
     await recordCreated(task);

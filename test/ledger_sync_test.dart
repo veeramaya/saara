@@ -342,6 +342,65 @@ void main() {
       );
     });
 
+    test('the real clock time beats a date-only Google Tasks copy', () async {
+      // The "Check ledger" case. Desktop holds the true time (2:19 PM); the same
+      // task, round-tripped through Google Tasks, arrived on mobile flattened to
+      // a date (midnight UTC = 5:30 AM IST). Google stamps every synced row with
+      // a fresh updatedAt, so the lossy mobile copy looks *newer* — yet its date
+      // must not win over the desktop's real time.
+      final realTime = DateTime.utc(2026, 7, 23, 8, 49); // 2:19 PM IST
+      final flat = DateTime.utc(2026, 7, 23); // date-only midnight UTC
+
+      // Desktop: real time, filed under Work, but stamped EARLIER.
+      await addArea(deviceA, 'work');
+      await deviceA
+          .into(deviceA.tasks)
+          .insert(
+            TasksCompanion.insert(
+              id: 'desk',
+              title: 'Check ledger',
+              gcalEventId: const Value('G1'),
+              source: const Value(TaskSource.gcalSync),
+              areaId: const Value('work'),
+              publicationState: const Value(PublicationState.released),
+              scheduledStart: Value(realTime),
+              durationMin: const Value(15),
+              createdAt: t0,
+              updatedAt: t0, // older
+            ),
+          );
+      // Mobile: same event, flattened, unfiled, stamped LATER (Google resync).
+      await deviceB
+          .into(deviceB.tasks)
+          .insert(
+            TasksCompanion.insert(
+              id: 'mob',
+              title: 'Check ledger',
+              gcalEventId: const Value('G1'),
+              source: const Value(TaskSource.gcalSync),
+              publicationState: const Value(PublicationState.released),
+              scheduledStart: Value(flat),
+              createdAt: t0,
+              updatedAt: t0.add(const Duration(hours: 5)), // newer
+            ),
+          );
+
+      await syncB.importJson(await syncA.exportJson());
+
+      final m = await deviceB.taskDao.findById('mob');
+      expect(
+        m!.scheduledStart!.toUtc(),
+        realTime,
+        reason: 'the real 2:19 PM time must win over the date-only 5:30 AM',
+      );
+      expect(m.areaId, 'work', reason: 'filing crosses to fill the gap');
+      expect(m.durationMin, 15, reason: 'the time block carries its duration');
+      final forG1 = (await deviceB.taskDao.allTasks()).where(
+        (t) => t.gcalEventId == 'G1',
+      );
+      expect(forG1, hasLength(1), reason: 'still one task, not a duplicate');
+    });
+
     test('unifying is idempotent across repeated syncs', () async {
       await addArea(deviceA, 'work');
       await googleImport(deviceA, 'd', 'G1');

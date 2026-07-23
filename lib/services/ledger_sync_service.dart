@@ -10,6 +10,7 @@ import 'package:pointycastle/macs/hmac.dart';
 import 'package:pointycastle/digests/sha256.dart';
 
 import '../data/database.dart';
+import '../domain/enums.dart';
 
 /// §9 device-to-device sync through a **ledger file** — never through Google
 /// (`docs/LEDGER_DESIGN.md`). Google carries interop with the outside world;
@@ -265,24 +266,81 @@ class LedgerSyncService {
     return summary;
   }
 
-  /// Fold an incoming task's **Saara-only** fields into an existing local twin
-  /// (same Google id). Google-owned facts — time, title, location — are left to
-  /// the local copy, which pulled them from the same Google source. Only the
-  /// fields Google can't carry, and only when the incoming is newer, are taken.
+  /// Fold an incoming task's fields into an existing local twin (same Google
+  /// id). Two authorities meet here:
+  ///
+  /// - For a real **external invite** (a Calendar event someone else owns),
+  ///   Google carries time/title/location faithfully to both devices, so the
+  ///   newer copy wins by `updatedAt` and there is nothing special to do.
+  /// - For a **Saara-owned** task that merely passed through Google **Tasks**,
+  ///   Google is lossy: it can't hold a clock time, so it flattens the task to
+  ///   a date (midnight UTC). The originating device still holds the true time.
+  ///   A date-only value is therefore *never* authoritative for the time —
+  ///   whichever copy carries a real time-of-day wins, regardless of which row
+  ///   Google stamped more recently (its sync rewrites `updatedAt` on every
+  ///   pull, which would otherwise let the lossy copy always "win").
+  ///
+  /// Area rides the ledger (`_applyLedgerAreas`) where a correction exists; here
+  /// we only fill a gap so a task filed on one device doesn't show unfiled on
+  /// its twin.
   Future<void> _mergeSaaraFields(Task local, Task incoming) async {
-    if (!incoming.updatedAt.isAfter(local.updatedAt)) return;
+    final incomingNewer = incoming.updatedAt.isAfter(local.updatedAt);
+
+    // Google Tasks flattens a timed task to a date at midnight UTC.
+    bool dateOnly(DateTime? d) {
+      if (d == null) return true;
+      final u = d.toUtc();
+      return u.hour == 0 &&
+          u.minute == 0 &&
+          u.second == 0 &&
+          u.millisecond == 0;
+    }
+
+    DateTime? pickTime(DateTime? mine, DateTime? theirs) {
+      final mineFlat = dateOnly(mine);
+      final theirsFlat = dateOnly(theirs);
+      if (mineFlat && !theirsFlat)
+        return theirs; // their real time beats my date
+      if (!mineFlat && theirsFlat) return mine; //  keep my real time
+      return incomingNewer ? theirs : mine; //       same nature → newer wins
+    }
+
+    // The newest stamp wins so onward syncs carry the reconciled row forward,
+    // even when we adopted the *older* row's real time.
+    final newStamp = incomingNewer ? incoming.updatedAt : local.updatedAt;
+
     await (db.update(db.tasks)..where((t) => t.id.equals(local.id))).write(
       TasksCompanion(
-        publicationState: Value(incoming.publicationState),
-        durationMin: Value(incoming.durationMin),
-        reminderOffsets: Value(incoming.reminderOffsets),
-        reviewNotes: Value(incoming.reviewNotes),
-        geofenceEnabled: Value(incoming.geofenceEnabled),
-        lat: Value(incoming.lat),
-        lng: Value(incoming.lng),
-        priority: Value(incoming.priority),
-        // areaId intentionally omitted — set from the ledger in _applyLedgerAreas.
-        updatedAt: Value(incoming.updatedAt),
+        scheduledStart: Value(
+          pickTime(local.scheduledStart, incoming.scheduledStart),
+        ),
+        dueDate: Value(pickTime(local.dueDate, incoming.dueDate)),
+        // A timed appointment (event) outranks a plain to-do classification.
+        kind: Value(
+          incoming.kind == TaskKind.event ? TaskKind.event : local.kind,
+        ),
+        durationMin: Value(local.durationMin ?? incoming.durationMin),
+        // Fill an unfiled gap only — a set area is owned by the ledger below.
+        areaId: Value(local.areaId ?? incoming.areaId),
+        // Fields where "newer wins" is simply right.
+        title: Value(incomingNewer ? incoming.title : local.title),
+        notes: Value(incomingNewer ? incoming.notes : local.notes),
+        publicationState: Value(
+          incomingNewer ? incoming.publicationState : local.publicationState,
+        ),
+        reminderOffsets: Value(
+          incomingNewer ? incoming.reminderOffsets : local.reminderOffsets,
+        ),
+        reviewNotes: Value(
+          incomingNewer ? incoming.reviewNotes : local.reviewNotes,
+        ),
+        geofenceEnabled: Value(
+          incomingNewer ? incoming.geofenceEnabled : local.geofenceEnabled,
+        ),
+        lat: Value(incomingNewer ? incoming.lat : local.lat),
+        lng: Value(incomingNewer ? incoming.lng : local.lng),
+        priority: Value(incomingNewer ? incoming.priority : local.priority),
+        updatedAt: Value(newStamp),
       ),
     );
   }
