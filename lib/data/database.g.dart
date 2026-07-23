@@ -2175,7 +2175,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: Constant('draft'),
+    defaultValue: Constant('released'),
   ).withConverter<PublicationState>($TasksTable.$converterpublicationState);
   static const VerificationMeta _rruleMeta = const VerificationMeta('rrule');
   @override
@@ -2898,11 +2898,14 @@ class Task extends DataClass implements Insertable<Task> {
   /// Drafts sync to your other devices but not to Google, and are excluded from
   /// reporting: present in the ledger, not moving the books.
   ///
-  /// The column default is **draft** deliberately: if a code path ever forgets
-  /// to set this, the row is left out of scoring rather than silently counted.
-  /// Understating is a recoverable mistake; inflating someone's integrity score
-  /// without their say-so is not. (Rows predating this column are set to
-  /// `released` by the v12 migration — they were already being counted.)
+  /// The column default is **released**. A draft is a deliberate choice — the
+  /// card's "Save as draft", a bulk import awaiting review — never a state a
+  /// task drifts into because a code path forgot to set it. The app creates
+  /// tasks from many places (chat, voice, capture, a reschedule's new instance,
+  /// a recurring occurrence); making draft the default turned all of those into
+  /// drafts-by-accident that were invisible to scoring but still shown in lists.
+  /// Released is what someone means when they add a task, so it is the default;
+  /// draft is only ever asked for.
   final PublicationState publicationState;
   final String? rrule;
   final String? parentRecurringId;

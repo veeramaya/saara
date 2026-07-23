@@ -123,6 +123,10 @@ class RecurringEngine {
       scheduledStart: Value(start),
       durationMin: Value(template.durationMin),
       dueDate: Value(start),
+      // An occurrence is only as committed as its rule: a released habit
+      // generates released dates that count, a draft one generates draft dates
+      // that don't. Never the column default.
+      publicationState: Value(template.publicationState),
       // The instance itself does not repeat; only the template carries rrule.
       parentRecurringId: Value(template.id),
       // Its permanent identity in the series. scheduledStart may move later;

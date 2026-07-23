@@ -228,6 +228,9 @@ class TaskStateMachine {
       scheduledStart: Value(newScheduledStart),
       durationMin: Value(task.durationMin),
       dueDate: Value(task.dueDate),
+      // A rescheduled commitment is the same commitment, moved — so the new
+      // instance carries the original's publication state, not the default.
+      publicationState: Value(task.publicationState),
       rrule: Value(task.rrule),
       parentRecurringId: Value(task.parentRecurringId),
       meetingLink: Value(task.meetingLink),

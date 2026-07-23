@@ -49,15 +49,34 @@ void main() {
   }
 
   group('publication state', () {
-    test('a task is born a draft — nothing is committed by accident', () async {
-      await addTask('t1');
-      final t = await db.taskDao.findById('t1');
+    test(
+      'a task is born released — draft is the deliberate exception',
+      () async {
+        await addTask('t1');
+        final t = await db.taskDao.findById('t1');
 
-      expect(
-        t!.publicationState,
-        PublicationState.draft,
-        reason: 'releasing is giving your word; it must be deliberate',
+        expect(
+          t!.publicationState,
+          PublicationState.released,
+          reason:
+              'adding a task is committing to it; draft must be asked for, '
+              'not the state a task drifts into when a path forgets to set it',
+        );
+      },
+    );
+
+    test('draft only happens when explicitly chosen', () async {
+      await db.taskDao.insertTask(
+        TasksCompanion.insert(
+          id: 'd1',
+          title: 'thinking',
+          publicationState: const Value(PublicationState.draft),
+          createdAt: now,
+          updatedAt: now,
+        ),
       );
+      final t = await db.taskDao.findById('d1');
+      expect(t!.publicationState, PublicationState.draft);
     });
 
     test('releasing is an explicit change', () async {

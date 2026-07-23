@@ -194,6 +194,31 @@ void main() {
     },
   );
 
+  test('v13 corrects drafts-by-accident to released', () async {
+    // Before this build, draft was the column default, so tasks created through
+    // any path that forgot to set it became drafts nobody chose — invisible to
+    // scoring but shown in lists. v13 flips them back to released, matching what
+    // the user meant when they created them.
+    await db.taskDao.insertTask(
+      TasksCompanion.insert(
+        id: 't1',
+        title: 'A task',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    await db.customStatement("UPDATE tasks SET publication_state = 'draft'");
+
+    // The v13 statement.
+    await db.customStatement(
+      "UPDATE tasks SET publication_state = 'released' "
+      "WHERE publication_state = 'draft'",
+    );
+
+    final t = await db.taskDao.findById('t1');
+    expect(t!.publicationState, PublicationState.released);
+  });
+
   test('running the backfill twice changes nothing', () async {
     await preMigrationRow(taskId: 't1', entryId: 'e1', areaId: 'health');
 

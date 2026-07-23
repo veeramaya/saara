@@ -48,13 +48,20 @@ void main() {
         ),
       );
 
-  Future<Task> addTask({String? areaId, String title = 'Morning walk'}) async {
+  Future<Task> addTask({
+    String? areaId,
+    String title = 'Morning walk',
+    // These tests exercise release/complete/correct, which start from a draft
+    // the user then commits — so they ask for a draft explicitly.
+    PublicationState publication = PublicationState.draft,
+  }) async {
     if (areaId != null) await addArea(areaId);
     await db.taskDao.insertTask(
       TasksCompanion.insert(
         id: 't1',
         title: title,
         areaId: Value(areaId),
+        publicationState: Value(publication),
         createdAt: now,
         updatedAt: now,
       ),

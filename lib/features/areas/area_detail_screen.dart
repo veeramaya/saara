@@ -386,9 +386,11 @@ class _AreaTaskTile extends StatelessWidget {
             : null,
       ),
       subtitle: Text(
-        when == null
-            ? task.status.name
-            : '${task.status.name} · ${DateFormat.MMMd().format(when)}',
+        [
+          if (task.publicationState == PublicationState.draft) 'draft',
+          task.status.name,
+          if (when != null) DateFormat.MMMd().format(when),
+        ].join(' · '),
       ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),

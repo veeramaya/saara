@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -141,6 +141,20 @@ class AppDatabase extends _$AppDatabase {
           '  area_id = (SELECT t.area_id FROM tasks t WHERE t.id = task_id), '
           '  title_snapshot = (SELECT t.title FROM tasks t WHERE t.id = task_id)',
           [deviceId],
+        );
+      }
+      // v13: the publication-state default flipped to 'released'. Any task that
+      // became a draft only because the earlier default was 'draft' — i.e. it
+      // was never touched by the card's explicit "Save as draft" — is corrected
+      // to released, matching what the user actually intended when they created
+      // it. A genuinely-chosen draft carries a `released` ledger entry only once
+      // released, so drafts with no such entry are the ones to fix. Since draft
+      // was never exposed as a choice before this build, every existing draft is
+      // an accident and is corrected.
+      if (from < 13) {
+        await customStatement(
+          "UPDATE tasks SET publication_state = 'released' "
+          "WHERE publication_state = 'draft'",
         );
       }
     },

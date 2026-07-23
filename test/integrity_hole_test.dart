@@ -97,9 +97,10 @@ void main() {
         title: 'thinking about it',
         areaId: const Value('health'),
         status: const Value(TaskStatus.completed),
+        publicationState: const Value(PublicationState.draft),
         createdAt: now,
         updatedAt: now,
-      ), // publicationState defaults to draft
+      ),
     );
     await db
         .into(db.taskTransitions)
