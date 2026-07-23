@@ -525,18 +525,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final content = passphrase == null
           ? await sync.exportJson()
           : await sync.exportEncrypted(passphrase);
-      final dir = await getTemporaryDirectory();
       final stamp = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
-      final file = File('${dir.path}/saara-ledger-$stamp.saara');
-      await file.writeAsString(content);
-      if (!mounted) return;
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'Saara ledger',
-        text: passphrase == null
-            ? 'My Saara record — import this on your other device.'
-            : 'My Saara record — import this with the password you set.',
-      );
+      final name = 'saara-ledger-$stamp.saara';
+
+      if (isDesktop) {
+        // Desktop share sheets don't reliably attach a file to mail, so on
+        // desktop we just save it where the user says — a drive, a synced
+        // folder, wherever they'll pick it up from.
+        final dir = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: 'Where should the ledger file be saved?',
+        );
+        if (dir == null) return; // cancelled
+        final file = File('$dir${Platform.pathSeparator}$name');
+        await file.writeAsString(content);
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 6),
+              content: Text('Saved to ${file.path}'),
+            ),
+          );
+        }
+      } else {
+        // Mobile: the share sheet works, and is the natural way to hand a file
+        // to another app or device.
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$name');
+        await file.writeAsString(content);
+        if (!mounted) return;
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          subject: 'Saara ledger',
+          text: passphrase == null
+              ? 'My Saara record — import this on your other device.'
+              : 'My Saara record — import this with the password you set.',
+        );
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     } finally {
