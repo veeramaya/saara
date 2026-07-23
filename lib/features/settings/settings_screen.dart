@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
@@ -32,6 +35,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   TimeOfDay _evening = const TimeOfDay(hour: 21, minute: 0); // §7.4 default
   bool _exporting = false;
   bool _resetting = false;
+  bool _ledgerBusy = false;
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +139,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   )
                 : null,
             onTap: _exporting ? null : _exportData,
+          ),
+          // §9 device-to-device sync through a file, not the cloud.
+          ListTile(
+            leading: const Icon(Icons.devices_outlined),
+            title: const Text('Sync between my devices'),
+            subtitle: const Text(
+              'Export a ledger file, import one from another device — '
+              'your record travels, never through Google',
+            ),
+            trailing: _ledgerBusy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _ledgerBusy ? null : _ledgerSyncSheet,
           ),
           ListTile(
             leading: Icon(
@@ -255,6 +276,110 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SnackBar(content: Text('Health sync failed: $e')),
         );
       }
+    }
+  }
+
+  /// §9 device-to-device sync. Two plain choices: send this device's record out
+  /// as a file, or pull one in. No cloud, no account — the file is the channel,
+  /// and where it travels (USB, a synced folder, AirDrop) is the user's call.
+  Future<void> _ledgerSyncSheet() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                'Your record — tasks, history and areas — moves as a file. '
+                'It never goes through Google. Export on one device, import on '
+                'the other; do it either way, as often as you like.',
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('Export a ledger file'),
+              subtitle: const Text('Share it to your other device'),
+              onTap: () => Navigator.pop(ctx, 'export'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Import a ledger file'),
+              subtitle: const Text(
+                'Merge another device\'s record into this one',
+              ),
+              onTap: () => Navigator.pop(ctx, 'import'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == 'export') await _ledgerExport();
+    if (choice == 'import') await _ledgerImport();
+  }
+
+  Future<void> _ledgerExport() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _ledgerBusy = true);
+    try {
+      final jsonStr = await ref.read(ledgerSyncServiceProvider).exportJson();
+      final dir = await getTemporaryDirectory();
+      final stamp = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
+      final file = File('${dir.path}/saara-ledger-$stamp.saara');
+      await file.writeAsString(jsonStr);
+      if (!mounted) return;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'Saara ledger',
+        text: 'My Saara record — import this on your other device.',
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) setState(() => _ledgerBusy = false);
+    }
+  }
+
+  Future<void> _ledgerImport() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final picked = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Choose a Saara ledger file',
+      type: FileType.any,
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return;
+
+    setState(() => _ledgerBusy = true);
+    try {
+      final jsonStr = await File(path).readAsString();
+      final summary = await ref
+          .read(ledgerSyncServiceProvider)
+          .importJson(jsonStr);
+      // Everything on screen may have changed — rebuild the graph.
+      ref.invalidate(allTasksProvider);
+      ref.invalidate(unscheduledTasksProvider);
+      ref.invalidate(tasksForDayProvider);
+      ref.invalidate(tasksBetweenProvider);
+      ref.invalidate(scheduleConflictsProvider);
+      ref.invalidate(activeAreasProvider);
+      ref.invalidate(areaScoresProvider);
+      ref.invalidate(overallEffectivenessProvider);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 5),
+          content: Text(
+            summary.isEmpty
+                ? 'Already up to date — nothing new to merge.'
+                : summary.toString(),
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    } finally {
+      if (mounted) setState(() => _ledgerBusy = false);
     }
   }
 

@@ -16,6 +16,7 @@ import 'domain/task_state_machine.dart';
 import 'services/ai/ai_config.dart';
 import 'services/app_settings.dart';
 import 'services/export_service.dart';
+import 'services/ledger_sync_service.dart';
 import 'services/reset_service.dart';
 import 'services/storage_service.dart';
 import 'services/contacts_service.dart';
@@ -45,6 +46,11 @@ final exportServiceProvider = Provider<ExportService>(
 /// §1.1 "Reset local data" — wipes everything held on this device.
 final resetServiceProvider = Provider<ResetService>(
   (ref) => ResetService(ref.watch(appDatabaseProvider)),
+);
+
+/// §9 device-to-device ledger sync (export/import a bundle).
+final ledgerSyncServiceProvider = Provider<LedgerSyncService>(
+  (ref) => LedgerSyncService(ref.watch(appDatabaseProvider)),
 );
 
 /// §7.6 on-device media accounting + cleanup.
