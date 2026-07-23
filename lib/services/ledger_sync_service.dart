@@ -1,6 +1,12 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:drift/drift.dart';
+import 'package:encrypt/encrypt.dart' as enc;
+import 'package:pointycastle/key_derivators/api.dart';
+import 'package:pointycastle/key_derivators/pbkdf2.dart';
+import 'package:pointycastle/macs/hmac.dart';
+import 'package:pointycastle/digests/sha256.dart';
 
 import '../data/database.dart';
 
@@ -45,6 +51,77 @@ class LedgerSyncService {
 
   Future<String> exportJson() async =>
       const JsonEncoder.withIndent('  ').convert(await exportBundle());
+
+  // ---- encryption (§9) -----------------------------------------------------
+  // The sync file often lands in a cloud folder (OneDrive, a synced SSD), so it
+  // is encrypted with a passphrase the user sets. AES-256-CBC with a random IV
+  // and salt, key stretched from the passphrase by PBKDF2-HMAC-SHA256. Losing
+  // the passphrase means the file is unreadable — stated with the same
+  // bluntness as Reset local data.
+
+  static const _magic = 'SAARALEDGER1'; // format tag at the head of the file
+  static const _pbkdfIterations = 100000;
+
+  enc.Key _deriveKey(String passphrase, Uint8List salt) {
+    final derivator = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))
+      ..init(Pbkdf2Parameters(salt, _pbkdfIterations, 32));
+    return enc.Key(
+      derivator.process(Uint8List.fromList(utf8.encode(passphrase))),
+    );
+  }
+
+  Uint8List _random(int n) {
+    final r = Random.secure();
+    return Uint8List.fromList(List<int>.generate(n, (_) => r.nextInt(256)));
+  }
+
+  /// Export, encrypted with [passphrase]. The salt and IV travel in the clear at
+  /// the head of the file (they must, to decrypt) — they are not secrets; the
+  /// passphrase is.
+  Future<String> exportEncrypted(String passphrase) async {
+    final salt = _random(16);
+    final iv = _random(16);
+    final key = _deriveKey(passphrase, salt);
+    final cipher = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+    final body = cipher.encrypt(await exportJson(), iv: enc.IV(iv));
+    return json.encode({
+      'magic': _magic,
+      'salt': base64.encode(salt),
+      'iv': base64.encode(iv),
+      'body': body.base64,
+    });
+  }
+
+  /// Import an encrypted bundle. Throws a clear error on the wrong passphrase or
+  /// a corrupt file rather than merging garbage.
+  Future<MergeSummary> importEncrypted(
+    String armored,
+    String passphrase,
+  ) async {
+    Map<String, dynamic> outer;
+    try {
+      outer = json.decode(armored) as Map<String, dynamic>;
+    } catch (_) {
+      throw const FormatException('This is not a Saara ledger file.');
+    }
+    if (outer['magic'] != _magic) {
+      throw const FormatException('This is not a Saara ledger file.');
+    }
+    final salt = base64.decode(outer['salt'] as String);
+    final iv = base64.decode(outer['iv'] as String);
+    final key = _deriveKey(passphrase, Uint8List.fromList(salt));
+    final cipher = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+    String plain;
+    try {
+      plain = cipher.decrypt64(
+        outer['body'] as String,
+        iv: enc.IV(Uint8List.fromList(iv)),
+      );
+    } catch (_) {
+      throw const FormatException('Wrong passphrase, or the file is damaged.');
+    }
+    return importJson(plain);
+  }
 
   /// Merge a bundle from another device into this one. Idempotent.
   ///

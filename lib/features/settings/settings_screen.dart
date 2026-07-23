@@ -319,20 +319,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (choice == 'import') await _ledgerImport();
   }
 
+  /// Ask for the passphrase that protects the ledger file. The same one is set
+  /// on both devices; it is what makes the file safe to leave in a cloud folder.
+  Future<String?> _askPassphrase({required bool creating}) async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ledger passphrase'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              creating
+                  ? 'Set a passphrase to protect this file. You will type the '
+                        'same one when you import it on your other device. If '
+                        'you lose it, the file cannot be read — there is no '
+                        'recovery.'
+                  : 'Enter the passphrase this file was exported with.',
+              style: Theme.of(ctx).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Passphrase',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: Text(creating ? 'Export' : 'Import'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _ledgerExport() async {
+    final passphrase = await _askPassphrase(creating: true);
+    if (passphrase == null || passphrase.isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _ledgerBusy = true);
     try {
-      final jsonStr = await ref.read(ledgerSyncServiceProvider).exportJson();
+      final armored = await ref
+          .read(ledgerSyncServiceProvider)
+          .exportEncrypted(passphrase);
       final dir = await getTemporaryDirectory();
       final stamp = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
       final file = File('${dir.path}/saara-ledger-$stamp.saara');
-      await file.writeAsString(jsonStr);
+      await file.writeAsString(armored);
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: 'Saara ledger',
-        text: 'My Saara record — import this on your other device.',
+        subject: 'Saara ledger (encrypted)',
+        text:
+            'My Saara record — import this on your other device with the '
+            'passphrase you set.',
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
@@ -342,20 +397,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _ledgerImport() async {
-    final messenger = ScaffoldMessenger.of(context);
     final picked = await FilePicker.platform.pickFiles(
       dialogTitle: 'Choose a Saara ledger file',
       type: FileType.any,
     );
     final path = picked?.files.single.path;
-    if (path == null) return;
+    if (path == null || !mounted) return;
+    final passphrase = await _askPassphrase(creating: false);
+    if (passphrase == null || passphrase.isEmpty || !mounted) return;
 
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _ledgerBusy = true);
     try {
-      final jsonStr = await File(path).readAsString();
+      final armored = await File(path).readAsString();
       final summary = await ref
           .read(ledgerSyncServiceProvider)
-          .importJson(jsonStr);
+          .importEncrypted(armored, passphrase);
       // Everything on screen may have changed — rebuild the graph.
       ref.invalidate(allTasksProvider);
       ref.invalidate(unscheduledTasksProvider);

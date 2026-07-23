@@ -199,4 +199,59 @@ void main() {
       );
     });
   });
+
+  group('encryption', () {
+    test('an encrypted bundle round-trips with the right passphrase', () async {
+      await addArea(deviceA, 'health');
+      await addTask(deviceA, 't1', title: 'Morning walk', areaId: 'health');
+      await addEntry(deviceA, 'e1', 't1');
+
+      final armored = await syncA.exportEncrypted('correct horse battery');
+      final summary = await syncB.importEncrypted(
+        armored,
+        'correct horse battery',
+      );
+
+      expect(summary.tasks, 1);
+      expect((await deviceB.taskDao.findById('t1'))!.title, 'Morning walk');
+    });
+
+    test('the wrong passphrase is refused, not merged as garbage', () async {
+      await addTask(deviceA, 't1');
+      final armored = await syncA.exportEncrypted('right one');
+
+      await expectLater(
+        syncB.importEncrypted(armored, 'WRONG one'),
+        throwsFormatException,
+      );
+      expect(await deviceB.select(deviceB.tasks).get(), isEmpty);
+    });
+
+    test('the ciphertext does not leak the plaintext', () async {
+      await addTask(deviceA, 't1', title: 'a very secret errand');
+      final armored = await syncA.exportEncrypted('pass');
+
+      expect(armored.contains('secret errand'), isFalse);
+      expect(armored.contains('a very secret'), isFalse);
+    });
+
+    test('a non-Saara file is rejected clearly', () async {
+      await expectLater(
+        syncB.importEncrypted('{"just":"some json"}', 'pass'),
+        throwsFormatException,
+      );
+    });
+
+    test('encryption is still idempotent through the passphrase', () async {
+      await addArea(deviceA, 'health');
+      await addTask(deviceA, 't1', areaId: 'health');
+      await addEntry(deviceA, 'e1', 't1');
+
+      final armored = await syncA.exportEncrypted('pw');
+      await syncB.importEncrypted(armored, 'pw');
+      final second = await syncB.importEncrypted(armored, 'pw');
+
+      expect(second.isEmpty, isTrue);
+    });
+  });
 }

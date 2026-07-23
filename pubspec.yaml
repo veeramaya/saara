@@ -3,7 +3,7 @@ description: "Saara — a local-first personal integrity & productivity agent (R
 publish_to: 'none'
 
 # App version. See §7/§14 — free app, no billing.
-version: 1.2.0+132
+version: 1.2.0+133
 
 environment:
   sdk: ^3.12.2
@@ -81,6 +81,11 @@ dependencies:
   # flow in services/google/desktop_google_auth.dart (crypto = PKCE S256).
   google_sign_in: ^6.2.1
   crypto: ^3.0.3
+  # Pure-Dart AES (pointycastle) — no native code, so it works on Windows
+  # desktop like everywhere else. Used to passphrase-encrypt the ledger sync
+  # file (§9), which often lands in a cloud folder.
+  encrypt: ^5.0.3
+  pointycastle: ^3.9.1 # PBKDF2 key stretching for the ledger passphrase
 
   # --- Background periodic sync (§8): WorkManager (Android) ---
   workmanager: ^0.9.0+3
