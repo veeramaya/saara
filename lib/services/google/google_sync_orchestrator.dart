@@ -557,9 +557,30 @@ class GoogleSyncOrchestrator {
       title: g.title,
       // Preserved (not stripped) — see the note on the import path above.
       notes: g.notes,
-      due: g.due,
+      due: _keepLocalTimeOfDay(s.scheduledStart, g.due),
       completed: g.completed,
       updated: g.updated,
+    );
+  }
+
+  /// Google **Tasks** `due` is date-only — it cannot carry a time of day, so it
+  /// comes back as midnight (05:30 IST). If we copied it over a task that has a
+  /// real clock time locally (set in Saara, or carried in by the ledger), every
+  /// sync would re-flatten it and the time would be permanently lost. So take
+  /// Google's *date* but keep our *time of day*. The ledger is the source of
+  /// truth for the time on a to-do; Google is only trusted for the date it
+  /// can actually represent.
+  static DateTime? _keepLocalTimeOfDay(DateTime? localStart, DateTime? due) {
+    if (due == null) return localStart; // due cleared on Google → keep ours
+    if (localStart == null) return due; // no local time → nothing to preserve
+    // Take Google's calendar date, keep the local hour/minute.
+    return DateTime(
+      due.year,
+      due.month,
+      due.day,
+      localStart.hour,
+      localStart.minute,
+      localStart.second,
     );
   }
 }

@@ -238,6 +238,63 @@ void main() {
     });
   });
 
+  group('a Google Tasks sync keeps the clock time', () {
+    test('a date-only due does not flatten a task with a real time', () async {
+      // The real-device bug: "Walking" was 8:48 AM locally, but every Google
+      // sync copied Google Tasks' date-only `due` (midnight = 5:30 AM IST) over
+      // it, permanently losing the time. Google Tasks cannot carry a time, so
+      // the sync must keep the local time-of-day and take only Google's date.
+      await task(
+        't1',
+        title: 'Walking',
+        start: DateTime(2026, 7, 22, 8, 48),
+        gcalEventId: 'gt-1',
+      );
+      // Google holds the same task, date-only, stamped newer (so the reconcile
+      // pulls the remote — the exact condition that used to re-flatten it).
+      google.tasks['gt-1'] = GTask(
+        id: 'gt-1',
+        listId: 'list-1',
+        title: 'Walking',
+        due: DateTime(2026, 7, 22), // date-only, midnight
+        completed: false,
+        updated: DateTime(2026, 7, 23).toIso8601String(),
+      );
+
+      await sync.syncAll();
+
+      final t = await db.taskDao.findById('t1');
+      expect(t!.scheduledStart, DateTime(2026, 7, 22, 8, 48));
+    });
+
+    test('the date still updates when Google moves it', () async {
+      // Preserve the time, but honour a genuine date change from Google.
+      await task(
+        't1',
+        title: 'Walking',
+        start: DateTime(2026, 7, 22, 8, 48),
+        gcalEventId: 'gt-1',
+      );
+      google.tasks['gt-1'] = GTask(
+        id: 'gt-1',
+        listId: 'list-1',
+        title: 'Walking',
+        due: DateTime(2026, 7, 25), // moved two days on
+        completed: false,
+        updated: DateTime(2026, 7, 23).toIso8601String(),
+      );
+
+      await sync.syncAll();
+
+      final t = await db.taskDao.findById('t1');
+      expect(
+        t!.scheduledStart,
+        DateTime(2026, 7, 25, 8, 48),
+        reason: "Google's new date, but the local time of day",
+      );
+    });
+  });
+
   group('Google Meet', () {
     test('ensureMeetLink asks for a conference and stores the link', () async {
       await task(
