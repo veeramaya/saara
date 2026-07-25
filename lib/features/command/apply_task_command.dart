@@ -17,7 +17,7 @@ import '../../services/notification_service.dart';
 ///
 /// [data] is the parsed command JSON. For edits, pass the matched [task]. For a
 /// create, [areaId] is the user-confirmed area (keeps metrics accurate).
-Future<String> applyTaskCommand(
+Future<({String message, String? taskId})> applyTaskCommand(
   WidgetRef ref,
   Map<String, dynamic> data, {
   Task? task,
@@ -28,6 +28,9 @@ Future<String> applyTaskCommand(
   final action = data['action'].toString();
   DateTime? affected;
   String result;
+  // The task the user can then open to verify/modify — null for a delete.
+  String? affectedId = task?.id;
+  bool created = false;
 
   switch (action) {
     case 'create':
@@ -51,18 +54,21 @@ Future<String> applyTaskCommand(
       final dur = data['durationMinutes'];
       final notes = data['notes']?.toString().trim();
       final loc = data['location']?.toString().trim();
+      final rrule = _rruleFor(data['repeat']);
+      final id = ref.read(uuidProvider).v4();
       // Through create(): a task you asked Saara to add is a commitment, so it
       // is released, and it is recorded in the ledger like any other (§4).
       await ref
           .read(taskServiceProvider)
           .create(
             TasksCompanion.insert(
-              id: ref.read(uuidProvider).v4(),
+              id: id,
               title: title,
               kind: Value(kind),
               scheduledStart: Value(dt),
               dueDate: Value(dt),
               durationMin: Value(dur is num ? dur.toInt() : null),
+              rrule: Value(rrule),
               areaId: Value(aid),
               locationName: Value(loc == null || loc.isEmpty ? null : loc),
               meetingLink: Value(meeting),
@@ -74,7 +80,11 @@ Future<String> applyTaskCommand(
             ),
           );
       affected = dt;
-      result = 'Created “$title”.';
+      affectedId = id;
+      created = true;
+      result = rrule == null
+          ? 'Created “$title”.'
+          : 'Created “$title” (repeats).';
       break;
 
     case 'reschedule':
@@ -125,6 +135,7 @@ Future<String> applyTaskCommand(
       );
       await NotificationService.instance.cancelTaskReminder(task.id);
       await SaaraGeofence.remove(task.id);
+      affectedId = null; // nothing to open — it's gone
       result = 'Deleted “${task.title}”.';
       break;
 
@@ -137,6 +148,9 @@ Future<String> applyTaskCommand(
   ref.invalidate(allTasksProvider);
   ref.invalidate(unscheduledTasksProvider);
   ref.invalidate(scheduleConflictsProvider);
+  // A newly-created repeating task is a template — materialise its occurrences
+  // now so they show up straight away, not only on the next app open.
+  if (created) ref.invalidate(materializeRecurringProvider);
   for (final d in {now, affected, task?.scheduledStart}) {
     if (d != null) {
       ref.invalidate(tasksForDayProvider(DateTime(d.year, d.month, d.day)));
@@ -150,8 +164,16 @@ Future<String> applyTaskCommand(
       }
     } catch (_) {}
   }());
-  return result;
+  return (message: result, taskId: affectedId);
 }
+
+/// Maps the AI's plain repeat word to an RRULE. "once"/absent → no repeat.
+String? _rruleFor(Object? repeat) => switch (repeat?.toString().toLowerCase()) {
+  'daily' => 'FREQ=DAILY',
+  'weekly' => 'FREQ=WEEKLY',
+  'monthly' => 'FREQ=MONTHLY',
+  _ => null,
+};
 
 String? _matchAreaId(WidgetRef ref, String? name) {
   if (name == null || name.trim().isEmpty) return null;

@@ -260,10 +260,13 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
           'ONLY with JSON: {"mode":"act","action":"create"|"reschedule"|'
           '"complete"|"rename"|"delete","taskId":<existing id or null>,"title":'
           '<string or null>,"kind":"task"|"event","datetime":<ISO or null>,'
-          '"durationMinutes":<num or null>,"area":<best-fitting area name or '
+          '"durationMinutes":<num or null>,"repeat":"once"|"daily"|"weekly"|'
+          '"monthly","area":<best-fitting area name or '
           'null>,"location":<str or null>,"link":<str or null>,"linkType":'
           '"meeting"|"document"|"other","notes":<str>,"summary":<short human '
-          'description>}.\n'
+          'description>}. For a time RANGE like "7:30 to 8:00", set datetime to '
+          'the start and durationMinutes to the span (30). For "every '
+          'day/week/month", set repeat accordingly.\n'
           'If it asks to FIND, LIST, SEARCH or SHOW tasks — e.g. "what\'s '
           'overdue in Health", "show done tasks this week", "meetings tomorrow" '
           '— reply ONLY with JSON: {"mode":"find","status":"all"|"open"|"done"|'
@@ -473,15 +476,26 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
 
   Future<void> _apply(_Msg m) async {
     try {
-      final result = await applyTaskCommand(
+      final res = await applyTaskCommand(
         ref,
         m.action!,
         task: m.task,
         areaId: m.selectedAreaId,
       );
+      // Show the task Saara just made/changed as a tappable row, so you can
+      // open it to verify or refine what it understood.
+      final affected = res.taskId == null
+          ? null
+          : await ref.read(taskDaoProvider).findById(res.taskId!);
       setState(() {
         m.applied = true;
-        _messages.add(_Msg(role: 'assistant', text: '✓ $result'));
+        _messages.add(
+          _Msg(
+            role: 'assistant',
+            text: '✓ ${res.message}',
+            results: affected == null ? null : [affected],
+          ),
+        );
       });
     } catch (e) {
       setState(() {
@@ -656,9 +670,17 @@ class _ActionCard extends ConsumerWidget {
         ? ''
         : ' on ${DateFormat('EEE, MMM d · h:mm a').format(dt)}';
     final title = data['title']?.toString() ?? msg.task?.title ?? '';
+    // Surface the parsed duration and repeat on the create card, so what Saara
+    // understood is verifiable *before* you apply it.
+    final durMin = data['durationMinutes'];
+    final durLabel = durMin is num ? ' · ${durMin.toInt()} min' : '';
+    final repeat = data['repeat']?.toString();
+    final repeatLabel = (repeat != null && repeat != 'once' && repeat != 'null')
+        ? ', repeats $repeat'
+        : '';
     final detail = switch (action) {
       'create' =>
-        'Create ${data['kind'] == 'event' ? 'event' : 'task'} “$title”$when',
+        'Create ${data['kind'] == 'event' ? 'event' : 'task'} “$title”$when$durLabel$repeatLabel',
       'reschedule' =>
         dt == null
             ? 'Reschedule “${msg.task?.title}”'
