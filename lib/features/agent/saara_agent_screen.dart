@@ -8,10 +8,12 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../core/time_context.dart';
 import '../common/top_menu.dart';
 import '../../data/database.dart';
+import '../../domain/enums.dart';
 import '../../providers.dart';
 import '../../services/ai/ai_config.dart';
 import '../command/apply_task_command.dart';
 import '../settings/ai_settings_screen.dart';
+import '../task_detail/task_detail_screen.dart';
 
 /// §6 / §19 Saara agent — a conversational surface powered by the user's own AI
 /// key. It doesn't just chat: it can **act** — create or change a task — with a
@@ -30,12 +32,14 @@ class _Msg {
     this.action,
     this.task,
     this.selectedAreaId,
+    this.results,
   });
   final String role; // 'user' | 'assistant'
   String? text; // text bubble / result
   Map<String, dynamic>? action; // an actionable command awaiting confirm
   Task? task; // matched existing task (edits)
   String? selectedAreaId; // area chosen for a create
+  List<Task>? results; // a "find" answer — matching tasks to show inline
   bool applied = false;
 }
 
@@ -132,7 +136,8 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
                           minLines: 1,
                           maxLines: 4,
                           decoration: InputDecoration(
-                            hintText: 'Ask, or tell Saara to do something…',
+                            hintText:
+                                'Ask, find, or tell Saara to do something…',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
                               icon: Icon(
@@ -204,7 +209,18 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
           '"durationMinutes":<num or null>,"area":<best-fitting area name or '
           'null>,"location":<str or null>,"link":<str or null>,"linkType":'
           '"meeting"|"document"|"other","notes":<str>,"summary":<short human '
-          'description>}. Otherwise reply ONLY with JSON: {"mode":"chat",'
+          'description>}.\n'
+          'If it asks to FIND, LIST, SEARCH or SHOW tasks — e.g. "what\'s '
+          'overdue in Health", "show done tasks this week", "meetings tomorrow" '
+          '— reply ONLY with JSON: {"mode":"find","status":"all"|"open"|"done"|'
+          '"missed"|"rejected"|"drafts","type":"all"|"task"|"event","area":'
+          '<one of the area names above, or null>,"text":<keywords to match in '
+          'the title/notes, or null>,"from":<ISO date or null>,"to":<ISO date '
+          'or null>,"overdue":<true if they asked for overdue/late, else '
+          'false>,"summary":<short human description of the search>}. The app '
+          'runs the search itself, so you do NOT need to list tasks — just the '
+          'filters.\n'
+          'Otherwise reply ONLY with JSON: {"mode":"chat",'
           '"reply":<your warm, concise reply>}. JSON only, no other text.';
       final res = await ref
           .read(llmServiceProvider)
@@ -250,6 +266,18 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
             ),
           );
         }
+      } else if (data != null && data['mode'] == 'find') {
+        final all = await ref.read(taskDaoProvider).allTasks();
+        final matches = _runFind(data, areas, all);
+        setState(
+          () => _messages.add(
+            _Msg(
+              role: 'assistant',
+              text: data['summary']?.toString(),
+              results: matches,
+            ),
+          ),
+        );
       } else if (data != null && data['reply'] != null) {
         _addAssistant(data['reply'].toString());
       } else {
@@ -290,6 +318,83 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
       }
     }
     return null;
+  }
+
+  /// Runs a "find" command's filters over every task — the same dimensions as
+  /// the Tasks header filters, so asking Saara and using the filters agree.
+  List<Task> _runFind(
+    Map<String, dynamic> d,
+    List<Area> areas,
+    List<Task> all,
+  ) {
+    final status = (d['status'] ?? 'all').toString();
+    final type = (d['type'] ?? 'all').toString();
+    final areaId = _matchArea(d['area'], areas);
+    final text = d['text']?.toString().trim().toLowerCase();
+    final overdue = d['overdue'] == true;
+    final from = DateTime.tryParse(d['from']?.toString() ?? '');
+    final toRaw = DateTime.tryParse(d['to']?.toString() ?? '');
+    final toEnd = toRaw == null
+        ? null
+        : DateTime(
+            toRaw.year,
+            toRaw.month,
+            toRaw.day,
+          ).add(const Duration(days: 1));
+    final now = DateTime.now();
+
+    bool ok(Task t) {
+      if (t.deletedAt != null) return false;
+      switch (status) {
+        case 'open':
+          if (t.publicationState != PublicationState.released) return false;
+          if (t.status != TaskStatus.created &&
+              t.status != TaskStatus.started &&
+              t.status != TaskStatus.inProgress) {
+            return false;
+          }
+        case 'done':
+          if (t.status != TaskStatus.completed) return false;
+        case 'missed':
+          if (t.status != TaskStatus.missed) return false;
+        case 'rejected':
+          if (t.status != TaskStatus.rejected) return false;
+        case 'drafts':
+          if (t.publicationState != PublicationState.draft) return false;
+      }
+      if (type == 'task' && t.kind == TaskKind.event) return false;
+      if (type == 'event' && t.kind != TaskKind.event) return false;
+      if (areaId != null && t.areaId != areaId) return false;
+      if (text != null && text.isNotEmpty) {
+        final hay = '${t.title} ${t.notes ?? ''}'.toLowerCase();
+        if (!hay.contains(text)) return false;
+      }
+      final when = t.scheduledStart ?? t.dueDate;
+      if (overdue) {
+        if (when == null || !when.isBefore(now)) return false;
+        if (t.status == TaskStatus.completed ||
+            t.status == TaskStatus.rejected) {
+          return false;
+        }
+      }
+      if (from != null &&
+          (when == null ||
+              when.isBefore(DateTime(from.year, from.month, from.day)))) {
+        return false;
+      }
+      if (toEnd != null && (when == null || !when.isBefore(toEnd)))
+        return false;
+      return true;
+    }
+
+    return all.where(ok).toList()..sort((a, b) {
+      final wa = a.scheduledStart ?? a.dueDate;
+      final wb = b.scheduledStart ?? b.dueDate;
+      if (wa == null && wb == null) return 0;
+      if (wa == null) return 1;
+      if (wb == null) return -1;
+      return wa.compareTo(wb);
+    });
   }
 
   void _addAssistant(String text) {
@@ -353,6 +458,9 @@ class _Bubble extends ConsumerWidget {
         onCancel: onCancel,
       );
     }
+    if (msg.results != null) {
+      return _ResultsCard(summary: msg.text, tasks: msg.results!);
+    }
     final isUser = msg.role == 'user';
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -369,6 +477,88 @@ class _Bubble extends ConsumerWidget {
         child: Text(
           msg.text ?? '',
           style: TextStyle(color: isUser ? scheme.onPrimary : scheme.onSurface),
+        ),
+      ),
+    );
+  }
+}
+
+/// A "find" answer: Saara's one-line summary and the matching tasks, each
+/// tappable straight through to its detail. The search itself ran locally over
+/// the same fields as the Tasks filters.
+class _ResultsCard extends StatelessWidget {
+  const _ResultsCard({required this.summary, required this.tasks});
+  final String? summary;
+  final List<Task> tasks;
+
+  static const _cap = 20; // don't flood the chat; the Tasks tab is for browsing
+
+  String _sub(Task t) {
+    final w = t.scheduledStart ?? t.dueDate;
+    return [
+      if (w != null) DateFormat('MMM d').format(w),
+      t.status.name,
+    ].join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final header = (summary != null && summary!.trim().isNotEmpty)
+        ? summary!.trim()
+        : (tasks.isEmpty
+              ? 'No matching tasks.'
+              : 'Found ${tasks.length} task${tasks.length == 1 ? '' : 's'}');
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
+        ),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(header, style: Theme.of(context).textTheme.titleSmall),
+                if (tasks.isNotEmpty) const SizedBox(height: 4),
+                for (final t in tasks.take(_cap))
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      t.kind == TaskKind.event
+                          ? Icons.event
+                          : Icons.radio_button_unchecked,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
+                    title: Text(
+                      t.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(_sub(t)),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailScreen(taskId: t.id),
+                      ),
+                    ),
+                  ),
+                if (tasks.length > _cap)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 6),
+                    child: Text(
+                      '+ ${tasks.length - _cap} more — open the Tasks tab to browse them all',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
