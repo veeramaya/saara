@@ -247,13 +247,6 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     return _sortAsc ? base : -base;
   }
 
-  String _sortLabel(_SortField f) => switch (f) {
-    _SortField.date => 'Date',
-    _SortField.title => 'Title',
-    _SortField.status => 'Status',
-    _SortField.updated => 'Updated',
-  };
-
   @override
   Widget build(BuildContext context) {
     final deleted = _filter == _StatusFilter.deleted;
@@ -303,68 +296,171 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
               ),
             ),
           ),
-          // Filters reflow onto as many rows as the width needs — one tidy set
-          // of controls, not a row you have to scroll sideways.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
+          // A spreadsheet-style header row: each field's dropdown sorts *and*
+          // filters its own column (like a Sheets autofilter), so the controls
+          // read as the columns of the list beneath. Scrolls sideways if the
+          // width is tight.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
               children: [
-                _FilterDropdown<_StatusFilter>(
-                  label: 'Status',
-                  value: _filter,
-                  isDefault: _filter == _StatusFilter.all,
-                  options: [
-                    for (final f in _StatusFilter.values) (f, _label(f)),
+                PopupMenuButton<String>(
+                  tooltip: 'Title',
+                  onSelected: _onHeaderAction,
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'title_az', child: Text('Sort A → Z')),
+                    PopupMenuItem(value: 'title_za', child: Text('Sort Z → A')),
                   ],
-                  onChanged: (f) => setState(() => _filter = f),
+                  child: _HeaderCell(
+                    label: 'Title',
+                    active: false,
+                    sortDir: _sortField == _SortField.title
+                        ? (_sortAsc ? 1 : -1)
+                        : 0,
+                  ),
                 ),
-                _FilterDropdown<_TypeFilter>(
-                  label: 'Type',
-                  value: _type,
-                  isDefault: _type == _TypeFilter.all,
-                  options: const [
-                    (_TypeFilter.all, 'All'),
-                    (_TypeFilter.tasks, 'To-dos'),
-                    (_TypeFilter.events, 'Events'),
+                PopupMenuButton<String>(
+                  tooltip: 'Type',
+                  onSelected: _onHeaderAction,
+                  itemBuilder: (_) => [
+                    CheckedPopupMenuItem(
+                      value: 'type:all',
+                      checked: _type == _TypeFilter.all,
+                      child: const Text('All'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: 'type:tasks',
+                      checked: _type == _TypeFilter.tasks,
+                      child: const Text('To-dos'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: 'type:events',
+                      checked: _type == _TypeFilter.events,
+                      child: const Text('Events'),
+                    ),
                   ],
-                  onChanged: (t) => setState(() => _type = t),
+                  child: _HeaderCell(
+                    label: 'Type',
+                    active: _type != _TypeFilter.all,
+                    sortDir: 0,
+                  ),
                 ),
-                _FilterDropdown<String?>(
-                  label: 'Area',
-                  value: _area,
-                  isDefault: _area == null,
-                  options: [
-                    (null, 'All areas'),
-                    (_unclassifiedArea, 'Unclassified'),
-                    for (final a in areas) (a.id, a.displayName),
+                PopupMenuButton<String>(
+                  tooltip: 'Date',
+                  onSelected: _onHeaderAction,
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'date_asc',
+                      child: Text('Sort: earliest first'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'date_desc',
+                      child: Text('Sort: latest first'),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'range',
+                      child: Text(
+                        _dateRange == null
+                            ? 'Filter: pick a range…'
+                            : 'Filter: ${DateFormat('MMM d').format(_dateRange!.start)} → ${DateFormat('MMM d').format(_dateRange!.end)}',
+                      ),
+                    ),
+                    if (_dateRange != null)
+                      const PopupMenuItem(
+                        value: 'range_clear',
+                        child: Text('Clear date range'),
+                      ),
                   ],
-                  onChanged: (a) => setState(() => _area = a),
+                  child: _HeaderCell(
+                    label: 'Date',
+                    active: _dateRange != null,
+                    sortDir: _sortField == _SortField.date
+                        ? (_sortAsc ? 1 : -1)
+                        : 0,
+                  ),
                 ),
-                _FilterDropdown<String?>(
-                  label: 'Source',
-                  value: _source,
-                  isDefault: _source == null,
-                  options: const [
-                    (null, 'Any source'),
-                    ('Desktop', 'Desktop'),
-                    ('Mobile', 'Mobile'),
-                    ('Google', 'Google'),
+                PopupMenuButton<String>(
+                  tooltip: 'Area',
+                  onSelected: _onHeaderAction,
+                  itemBuilder: (_) => [
+                    CheckedPopupMenuItem(
+                      value: 'area:__all__',
+                      checked: _area == null,
+                      child: const Text('All areas'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: 'area:$_unclassifiedArea',
+                      checked: _area == _unclassifiedArea,
+                      child: const Text('Unclassified'),
+                    ),
+                    for (final a in areas)
+                      CheckedPopupMenuItem(
+                        value: 'area:${a.id}',
+                        checked: _area == a.id,
+                        child: Text(a.displayName),
+                      ),
                   ],
-                  onChanged: (s) => setState(() => _source = s),
+                  child: _HeaderCell(
+                    label: 'Area',
+                    active: _area != null,
+                    sortDir: 0,
+                  ),
                 ),
-                _DateRangeChip(
-                  range: _dateRange,
-                  onPick: _pickDateRange,
-                  onClear: () => setState(() => _dateRange = null),
+                PopupMenuButton<String>(
+                  tooltip: 'Status',
+                  onSelected: _onHeaderAction,
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'status_sort',
+                      child: Text('Sort by status'),
+                    ),
+                    const PopupMenuDivider(),
+                    for (final f in _StatusFilter.values)
+                      CheckedPopupMenuItem(
+                        value: 'status:${f.name}',
+                        checked: _filter == f,
+                        child: Text(_label(f)),
+                      ),
+                  ],
+                  child: _HeaderCell(
+                    label: 'Status',
+                    active: _filter != _StatusFilter.all,
+                    sortDir: _sortField == _SortField.status
+                        ? (_sortAsc ? 1 : -1)
+                        : 0,
+                  ),
                 ),
-                _SortControl(
-                  label: _sortLabel(_sortField),
-                  ascending: _sortAsc,
-                  onField: (f) => setState(() => _sortField = f),
-                  onToggle: () => setState(() => _sortAsc = !_sortAsc),
+                PopupMenuButton<String>(
+                  tooltip: 'Source',
+                  onSelected: _onHeaderAction,
+                  itemBuilder: (_) => [
+                    CheckedPopupMenuItem(
+                      value: 'source:__any__',
+                      checked: _source == null,
+                      child: const Text('Any source'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: 'source:Desktop',
+                      checked: _source == 'Desktop',
+                      child: const Text('Desktop'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: 'source:Mobile',
+                      checked: _source == 'Mobile',
+                      child: const Text('Mobile'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: 'source:Google',
+                      checked: _source == 'Google',
+                      child: const Text('Google'),
+                    ),
+                  ],
+                  child: _HeaderCell(
+                    label: 'Source',
+                    active: _source != null,
+                    sortDir: 0,
+                  ),
                 ),
               ],
             ),
@@ -421,6 +517,54 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     _StatusFilter.archived => 'Archived',
     _StatusFilter.deleted => 'Deleted',
   };
+
+  /// One dispatcher for every column header's menu. Values are short codes
+  /// (`sort_*`, `type:…`, `area:…`) so each header can offer sort and filter
+  /// from the same dropdown.
+  void _onHeaderAction(String a) {
+    if (a == 'range') {
+      _pickDateRange();
+      return;
+    }
+    setState(() {
+      switch (a) {
+        case 'title_az':
+          _sortField = _SortField.title;
+          _sortAsc = true;
+        case 'title_za':
+          _sortField = _SortField.title;
+          _sortAsc = false;
+        case 'date_asc':
+          _sortField = _SortField.date;
+          _sortAsc = true;
+        case 'date_desc':
+          _sortField = _SortField.date;
+          _sortAsc = false;
+        case 'status_sort':
+          _sortField = _SortField.status;
+          _sortAsc = true;
+        case 'range_clear':
+          _dateRange = null;
+        default:
+          if (a.startsWith('type:')) {
+            _type = switch (a.substring(5)) {
+              'tasks' => _TypeFilter.tasks,
+              'events' => _TypeFilter.events,
+              _ => _TypeFilter.all,
+            };
+          } else if (a.startsWith('area:')) {
+            final v = a.substring(5);
+            _area = v == '__all__' ? null : v;
+          } else if (a.startsWith('status:')) {
+            final name = a.substring(7);
+            _filter = _StatusFilter.values.firstWhere((f) => f.name == name);
+          } else if (a.startsWith('source:')) {
+            final v = a.substring(7);
+            _source = v == '__any__' ? null : v;
+          }
+      }
+    });
+  }
 
   Future<void> _pickDateRange() async {
     final now = DateTime.now();
@@ -492,228 +636,54 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   }
 }
 
-/// Shared look for every control in the filter bar: a pill that's quiet when
-/// at its default and tinted when it's actively narrowing the list. Keeping the
-/// shape in one place is what makes the bar read as a single system.
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({
-    required this.child,
+/// One field in the spreadsheet-style header row. Reads as a column header —
+/// a label with an underline that darkens when the column is filtering, a sort
+/// arrow when the list is ordered by it, and a ▾ that opens its sort/filter
+/// menu.
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({
+    required this.label,
     required this.active,
-    required this.onTap,
-    this.tooltip,
+    required this.sortDir, // 0 none · 1 ascending · -1 descending
   });
 
-  final Widget child;
+  final String label;
   final bool active;
-  final VoidCallback? onTap;
-  final String? tooltip;
+  final int sortDir;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final pill = InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-        decoration: BoxDecoration(
-          color: active ? scheme.secondaryContainer : null,
-          border: Border.all(
+    final on = active ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: active ? scheme.secondaryContainer : null,
+        border: Border(
+          bottom: BorderSide(
             color: active ? scheme.secondary : scheme.outlineVariant,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: DefaultTextStyle.merge(
-          style: TextStyle(
-            color: active
-                ? scheme.onSecondaryContainer
-                : scheme.onSurfaceVariant,
-          ),
-          child: IconTheme.merge(
-            data: IconThemeData(
-              size: 18,
-              color: active
-                  ? scheme.onSecondaryContainer
-                  : scheme.onSurfaceVariant,
-            ),
-            child: child,
+            width: 2,
           ),
         ),
       ),
-    );
-    return tooltip == null ? pill : Tooltip(message: tooltip!, child: pill);
-  }
-}
-
-/// The Date control: opens a from–to range picker; shows the chosen span and
-/// clears with an ✕. A range (not presets) is how people actually scan a
-/// period — "everything between the 1st and the 15th".
-class _DateRangeChip extends StatelessWidget {
-  const _DateRangeChip({
-    required this.range,
-    required this.onPick,
-    required this.onClear,
-  });
-
-  final DateTimeRange? range;
-  final VoidCallback onPick;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = range != null;
-    final fmt = DateFormat('MMM d');
-    return _FilterPill(
-      active: active,
-      onTap: onPick,
-      tooltip: 'Filter by a date range',
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.date_range_outlined),
-          const SizedBox(width: 6),
           Text(
-            active
-                ? '${fmt.format(range!.start)} → ${fmt.format(range!.end)}'
-                : 'Date',
+            label,
+            style: TextStyle(color: on, fontWeight: FontWeight.w600),
           ),
-          if (active)
-            GestureDetector(
-              onTap: onClear,
-              child: const Padding(
-                padding: EdgeInsets.only(left: 4),
-                child: Icon(Icons.close, size: 16),
-              ),
-            )
-          else
-            const Icon(Icons.arrow_drop_down, size: 20),
-        ],
-      ),
-    );
-  }
-}
-
-/// The Sort control: pick the column, and a separate ↑/↓ button flips the
-/// direction — the spreadsheet gesture, adapted to a list.
-class _SortControl extends StatelessWidget {
-  const _SortControl({
-    required this.label,
-    required this.ascending,
-    required this.onField,
-    required this.onToggle,
-  });
-
-  final String label;
-  final bool ascending;
-  final ValueChanged<_SortField> onField;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return _FilterPill(
-      active: false,
-      onTap: null,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.swap_vert, size: 18),
-          const SizedBox(width: 6),
-          PopupMenuButton<_SortField>(
-            tooltip: 'Sort by',
-            onSelected: onField,
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: _SortField.date, child: Text('Date')),
-              PopupMenuItem(value: _SortField.title, child: Text('Title')),
-              PopupMenuItem(value: _SortField.status, child: Text('Status')),
-              PopupMenuItem(value: _SortField.updated, child: Text('Updated')),
-            ],
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label),
-                const Icon(Icons.arrow_drop_down, size: 20),
-              ],
-            ),
-          ),
-          InkWell(
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
+          if (sortDir != 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
               child: Icon(
-                ascending ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 16,
+                sortDir == 1 ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14,
+                color: on,
               ),
             ),
-          ),
+          Icon(Icons.arrow_drop_down, size: 20, color: on),
         ],
-      ),
-    );
-  }
-}
-
-/// A compact "Label: value ▾" chip that opens a menu — one per filter, so the
-/// Tasks screen reads as four small controls instead of a long row of chips.
-class _FilterDropdown<T> extends StatelessWidget {
-  const _FilterDropdown({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-    required this.isDefault,
-  });
-
-  final String label;
-  final T value;
-  final List<(T, String)> options;
-  final ValueChanged<T> onChanged;
-
-  /// When false, the control is tinted to signal an active (non-"all") filter.
-  final bool isDefault;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final current = options.firstWhere(
-      (o) => o.$1 == value,
-      orElse: () => options.first,
-    );
-    return PopupMenuButton<T>(
-      initialValue: value,
-      onSelected: onChanged,
-      tooltip: label,
-      itemBuilder: (_) => [
-        for (final (v, l) in options) PopupMenuItem(value: v, child: Text(l)),
-      ],
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-        decoration: BoxDecoration(
-          color: isDefault ? null : scheme.secondaryContainer,
-          border: Border.all(
-            color: isDefault ? scheme.outlineVariant : scheme.secondary,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isDefault ? label : '$label: ${current.$2}',
-              style: TextStyle(
-                color: isDefault
-                    ? scheme.onSurfaceVariant
-                    : scheme.onSecondaryContainer,
-              ),
-            ),
-            Icon(
-              Icons.arrow_drop_down,
-              size: 20,
-              color: isDefault
-                  ? scheme.onSurfaceVariant
-                  : scheme.onSecondaryContainer,
-            ),
-          ],
-        ),
       ),
     );
   }
