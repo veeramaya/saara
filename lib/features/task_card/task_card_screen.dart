@@ -1534,6 +1534,14 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     );
     await _applyGeofence(t.id);
     ref.invalidate(taskByIdProvider(t.id));
+    // The Tasks list, calendar, conflicts and the Unclassified bucket all read
+    // their own copies — an edit (title, time, area…) must refresh them too, or
+    // the list keeps showing the pre-edit version while the detail is current.
+    ref.invalidate(allTasksProvider);
+    ref.invalidate(tasksBetweenProvider);
+    ref.invalidate(unclassifiedTasksProvider);
+    ref.invalidate(scheduleConflictsProvider);
+    ref.invalidate(childTaskCountsProvider);
     ref.invalidate(tasksForDayProvider(DateTime(now.year, now.month, now.day)));
     ref.invalidate(unscheduledTasksProvider);
     if (anchor != null) {
