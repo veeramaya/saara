@@ -15,6 +15,60 @@ import '../command/apply_task_command.dart';
 import '../settings/ai_settings_screen.dart';
 import '../task_detail/task_detail_screen.dart';
 
+/// Words too common to help narrow a search — dropped so "call with coaches"
+/// searches for "call"/"coach", not the noise.
+const _searchStop = {
+  'with',
+  'the',
+  'a',
+  'an',
+  'to',
+  'of',
+  'for',
+  'in',
+  'on',
+  'at',
+  'and',
+  'or',
+  'my',
+  'me',
+  'all',
+  'any',
+  'show',
+  'find',
+  'list',
+  'get',
+  'task',
+  'tasks',
+  'event',
+  'events',
+  'about',
+  'please',
+};
+
+/// Shown when the model returns nothing usable, so the chat never goes silent.
+const _fallbackReply =
+    "I didn't quite catch that. Try naming a task, or ask me to find one — "
+    'e.g. "show overdue tasks" or "calls with coaches this week".';
+
+/// Crude singulariser so "coaches"→"coach", "meetings"→"meeting" match.
+String _stem(String w) {
+  if (w.length > 4 && w.endsWith('es')) return w.substring(0, w.length - 2);
+  if (w.length > 3 && w.endsWith('s')) return w.substring(0, w.length - 1);
+  return w;
+}
+
+/// Split a query phrase into the meaningful, stemmed words to match on.
+List<String> _queryStems(String? text) {
+  if (text == null) return const [];
+  return text
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((w) => w.length >= 2 && !_searchStop.contains(w))
+      .map(_stem)
+      .toList();
+}
+
 /// §6 / §19 Saara agent — a conversational surface powered by the user's own AI
 /// key. It doesn't just chat: it can **act** — create or change a task — with a
 /// confirm before it does. Deterministic core still works with no AI.
@@ -279,9 +333,11 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
           ),
         );
       } else if (data != null && data['reply'] != null) {
-        _addAssistant(data['reply'].toString());
+        final reply = data['reply'].toString().trim();
+        _addAssistant(reply.isEmpty ? _fallbackReply : reply);
       } else {
-        _addAssistant(out.trim());
+        final t = out.trim();
+        _addAssistant(t.isEmpty ? _fallbackReply : t);
       }
     } catch (e) {
       _addAssistant('⚠️ $e');
@@ -330,7 +386,7 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
     final status = (d['status'] ?? 'all').toString();
     final type = (d['type'] ?? 'all').toString();
     final areaId = _matchArea(d['area'], areas);
-    final text = d['text']?.toString().trim().toLowerCase();
+    final stems = _queryStems(d['text']?.toString());
     final overdue = d['overdue'] == true;
     final from = DateTime.tryParse(d['from']?.toString() ?? '');
     final toRaw = DateTime.tryParse(d['to']?.toString() ?? '');
@@ -365,10 +421,6 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
       if (type == 'task' && t.kind == TaskKind.event) return false;
       if (type == 'event' && t.kind != TaskKind.event) return false;
       if (areaId != null && t.areaId != areaId) return false;
-      if (text != null && text.isNotEmpty) {
-        final hay = '${t.title} ${t.notes ?? ''}'.toLowerCase();
-        if (!hay.contains(text)) return false;
-      }
       final when = t.scheduledStart ?? t.dueDate;
       if (overdue) {
         if (when == null || !when.isBefore(now)) return false;
@@ -382,18 +434,36 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
               when.isBefore(DateTime(from.year, from.month, from.day)))) {
         return false;
       }
-      if (toEnd != null && (when == null || !when.isBefore(toEnd)))
+      if (toEnd != null && (when == null || !when.isBefore(toEnd))) {
         return false;
+      }
       return true;
     }
 
-    return all.where(ok).toList()..sort((a, b) {
+    int byDate(Task a, Task b) {
       final wa = a.scheduledStart ?? a.dueDate;
       final wb = b.scheduledStart ?? b.dueDate;
       if (wa == null && wb == null) return 0;
       if (wa == null) return 1;
       if (wb == null) return -1;
       return wa.compareTo(wb);
+    }
+
+    final hard = all.where(ok).toList();
+    if (stems.isEmpty) return hard..sort(byDate);
+
+    // Fuzzy text match: score by how many query words (stemmed, so "coaches"
+    // finds "coach") appear in the title/notes. Keep anything that matches at
+    // least one — the closest results first — so a near-miss phrase like "call
+    // with coaches" still returns the coach calls instead of nothing.
+    int score(Task t) {
+      final hay = '${t.title} ${t.notes ?? ''}'.toLowerCase();
+      return stems.where(hay.contains).length;
+    }
+
+    return hard.where((t) => score(t) > 0).toList()..sort((a, b) {
+      final s = score(b).compareTo(score(a));
+      return s != 0 ? s : byDate(a, b);
     });
   }
 
