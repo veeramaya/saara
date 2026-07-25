@@ -4061,12 +4061,22 @@ class $TaskParticipantsTable extends TaskParticipants
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _phoneMeta = const VerificationMeta('phone');
+  @override
+  late final GeneratedColumn<String> phone = GeneratedColumn<String>(
+    'phone',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     taskId,
     contactLookupKey,
     displayName,
+    phone,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4115,6 +4125,12 @@ class $TaskParticipantsTable extends TaskParticipants
     } else if (isInserting) {
       context.missing(_displayNameMeta);
     }
+    if (data.containsKey('phone')) {
+      context.handle(
+        _phoneMeta,
+        phone.isAcceptableOrUnknown(data['phone']!, _phoneMeta),
+      );
+    }
     return context;
   }
 
@@ -4140,6 +4156,10 @@ class $TaskParticipantsTable extends TaskParticipants
         DriftSqlType.string,
         data['${effectivePrefix}display_name'],
       )!,
+      phone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phone'],
+      ),
     );
   }
 
@@ -4154,11 +4174,13 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
   final String taskId;
   final String contactLookupKey;
   final String displayName;
+  final String? phone;
   const TaskParticipant({
     required this.id,
     required this.taskId,
     required this.contactLookupKey,
     required this.displayName,
+    this.phone,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4167,6 +4189,9 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
     map['task_id'] = Variable<String>(taskId);
     map['contact_lookup_key'] = Variable<String>(contactLookupKey);
     map['display_name'] = Variable<String>(displayName);
+    if (!nullToAbsent || phone != null) {
+      map['phone'] = Variable<String>(phone);
+    }
     return map;
   }
 
@@ -4176,6 +4201,9 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
       taskId: Value(taskId),
       contactLookupKey: Value(contactLookupKey),
       displayName: Value(displayName),
+      phone: phone == null && nullToAbsent
+          ? const Value.absent()
+          : Value(phone),
     );
   }
 
@@ -4189,6 +4217,7 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
       taskId: serializer.fromJson<String>(json['taskId']),
       contactLookupKey: serializer.fromJson<String>(json['contactLookupKey']),
       displayName: serializer.fromJson<String>(json['displayName']),
+      phone: serializer.fromJson<String?>(json['phone']),
     );
   }
   @override
@@ -4199,6 +4228,7 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
       'taskId': serializer.toJson<String>(taskId),
       'contactLookupKey': serializer.toJson<String>(contactLookupKey),
       'displayName': serializer.toJson<String>(displayName),
+      'phone': serializer.toJson<String?>(phone),
     };
   }
 
@@ -4207,11 +4237,13 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
     String? taskId,
     String? contactLookupKey,
     String? displayName,
+    Value<String?> phone = const Value.absent(),
   }) => TaskParticipant(
     id: id ?? this.id,
     taskId: taskId ?? this.taskId,
     contactLookupKey: contactLookupKey ?? this.contactLookupKey,
     displayName: displayName ?? this.displayName,
+    phone: phone.present ? phone.value : this.phone,
   );
   TaskParticipant copyWithCompanion(TaskParticipantsCompanion data) {
     return TaskParticipant(
@@ -4223,6 +4255,7 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
       displayName: data.displayName.present
           ? data.displayName.value
           : this.displayName,
+      phone: data.phone.present ? data.phone.value : this.phone,
     );
   }
 
@@ -4232,13 +4265,15 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
           ..write('id: $id, ')
           ..write('taskId: $taskId, ')
           ..write('contactLookupKey: $contactLookupKey, ')
-          ..write('displayName: $displayName')
+          ..write('displayName: $displayName, ')
+          ..write('phone: $phone')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, taskId, contactLookupKey, displayName);
+  int get hashCode =>
+      Object.hash(id, taskId, contactLookupKey, displayName, phone);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4246,7 +4281,8 @@ class TaskParticipant extends DataClass implements Insertable<TaskParticipant> {
           other.id == this.id &&
           other.taskId == this.taskId &&
           other.contactLookupKey == this.contactLookupKey &&
-          other.displayName == this.displayName);
+          other.displayName == this.displayName &&
+          other.phone == this.phone);
 }
 
 class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
@@ -4254,12 +4290,14 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
   final Value<String> taskId;
   final Value<String> contactLookupKey;
   final Value<String> displayName;
+  final Value<String?> phone;
   final Value<int> rowid;
   const TaskParticipantsCompanion({
     this.id = const Value.absent(),
     this.taskId = const Value.absent(),
     this.contactLookupKey = const Value.absent(),
     this.displayName = const Value.absent(),
+    this.phone = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TaskParticipantsCompanion.insert({
@@ -4267,6 +4305,7 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
     required String taskId,
     required String contactLookupKey,
     required String displayName,
+    this.phone = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        taskId = Value(taskId),
@@ -4277,6 +4316,7 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
     Expression<String>? taskId,
     Expression<String>? contactLookupKey,
     Expression<String>? displayName,
+    Expression<String>? phone,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4284,6 +4324,7 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
       if (taskId != null) 'task_id': taskId,
       if (contactLookupKey != null) 'contact_lookup_key': contactLookupKey,
       if (displayName != null) 'display_name': displayName,
+      if (phone != null) 'phone': phone,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4293,6 +4334,7 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
     Value<String>? taskId,
     Value<String>? contactLookupKey,
     Value<String>? displayName,
+    Value<String?>? phone,
     Value<int>? rowid,
   }) {
     return TaskParticipantsCompanion(
@@ -4300,6 +4342,7 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
       taskId: taskId ?? this.taskId,
       contactLookupKey: contactLookupKey ?? this.contactLookupKey,
       displayName: displayName ?? this.displayName,
+      phone: phone ?? this.phone,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4319,6 +4362,9 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
     if (displayName.present) {
       map['display_name'] = Variable<String>(displayName.value);
     }
+    if (phone.present) {
+      map['phone'] = Variable<String>(phone.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4332,6 +4378,7 @@ class TaskParticipantsCompanion extends UpdateCompanion<TaskParticipant> {
           ..write('taskId: $taskId, ')
           ..write('contactLookupKey: $contactLookupKey, ')
           ..write('displayName: $displayName, ')
+          ..write('phone: $phone, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11204,6 +11251,7 @@ typedef $$TaskParticipantsTableCreateCompanionBuilder =
       required String taskId,
       required String contactLookupKey,
       required String displayName,
+      Value<String?> phone,
       Value<int> rowid,
     });
 typedef $$TaskParticipantsTableUpdateCompanionBuilder =
@@ -11212,6 +11260,7 @@ typedef $$TaskParticipantsTableUpdateCompanionBuilder =
       Value<String> taskId,
       Value<String> contactLookupKey,
       Value<String> displayName,
+      Value<String?> phone,
       Value<int> rowid,
     });
 
@@ -11267,6 +11316,11 @@ class $$TaskParticipantsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$TasksTableFilterComposer get taskId {
     final $$TasksTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11315,6 +11369,11 @@ class $$TaskParticipantsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$TasksTableOrderingComposer get taskId {
     final $$TasksTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11360,6 +11419,9 @@ class $$TaskParticipantsTableAnnotationComposer
     column: $table.displayName,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get phone =>
+      $composableBuilder(column: $table.phone, builder: (column) => column);
 
   $$TasksTableAnnotationComposer get taskId {
     final $$TasksTableAnnotationComposer composer = $composerBuilder(
@@ -11419,12 +11481,14 @@ class $$TaskParticipantsTableTableManager
                 Value<String> taskId = const Value.absent(),
                 Value<String> contactLookupKey = const Value.absent(),
                 Value<String> displayName = const Value.absent(),
+                Value<String?> phone = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TaskParticipantsCompanion(
                 id: id,
                 taskId: taskId,
                 contactLookupKey: contactLookupKey,
                 displayName: displayName,
+                phone: phone,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11433,12 +11497,14 @@ class $$TaskParticipantsTableTableManager
                 required String taskId,
                 required String contactLookupKey,
                 required String displayName,
+                Value<String?> phone = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TaskParticipantsCompanion.insert(
                 id: id,
                 taskId: taskId,
                 contactLookupKey: contactLookupKey,
                 displayName: displayName,
+                phone: phone,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

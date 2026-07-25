@@ -94,7 +94,22 @@ class _ContactPickerScreenState extends ConsumerState<ContactPickerScreen> {
                               ),
                             ),
                             title: Text(c.name),
-                            onTap: () => Navigator.of(context).pop(c),
+                            // Pull the number when picked so it can be stored
+                            // (and synced) for calling/WhatsApp — not loaded for
+                            // the whole list, which stays name-only and fast.
+                            onTap: () async {
+                              final phones = await ref
+                                  .read(contactsServiceProvider)
+                                  .phonesFor(c.id);
+                              if (!context.mounted) return;
+                              Navigator.of(context).pop(
+                                SimpleContact(
+                                  id: c.id,
+                                  name: c.name,
+                                  phone: phones.isEmpty ? null : phones.first,
+                                ),
+                              );
+                            },
                           );
                         },
                       );

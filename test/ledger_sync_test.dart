@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
@@ -453,6 +454,58 @@ void main() {
         isNotNull,
         reason: 'B can now name the device that wrote the task',
       );
+    });
+  });
+
+  group('a participant and its phone travel', () {
+    test('a contact added on one device is callable on the other', () async {
+      await addTask(deviceA, 't1', title: 'Call Bharath');
+      await deviceA
+          .into(deviceA.taskParticipants)
+          .insert(
+            TaskParticipantsCompanion.insert(
+              id: 'p1',
+              taskId: 't1',
+              contactLookupKey: 'contact-42',
+              displayName: 'Bharath',
+              phone: const Value('+919812345678'),
+            ),
+          );
+
+      final summary = await syncB.importJson(await syncA.exportJson());
+
+      expect(summary.participants, 1);
+      final onB = await deviceB.taskDao.participantsForTask('t1');
+      expect(onB, hasLength(1));
+      expect(onB.single.displayName, 'Bharath');
+      expect(
+        onB.single.phone,
+        '+919812345678',
+        reason: 'the number crosses so desktop can call/WhatsApp',
+      );
+    });
+
+    test('a participant whose task is absent is skipped (FK safe)', () async {
+      // A stray participant row (its task never synced) must not break import.
+      final bundle = {
+        'bundleFormat': 1,
+        'schemaVersion': deviceA.schemaVersion,
+        'tasks': const [],
+        'ledger': const [],
+        'areas': const [],
+        'results': const [],
+        'participants': [
+          {
+            'id': 'orphan',
+            'taskId': 'no-such-task',
+            'contactLookupKey': 'x',
+            'displayName': 'Ghost',
+            'phone': null,
+          },
+        ],
+      };
+      final summary = await syncB.importJson(jsonEncode(bundle));
+      expect(summary.participants, 0);
     });
   });
 

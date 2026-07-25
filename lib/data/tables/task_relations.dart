@@ -3,12 +3,17 @@ import 'package:drift/drift.dart';
 import '../../domain/enums.dart';
 import 'tasks.dart';
 
-/// §3.3 TaskParticipant — on-device contact refs only; never uploaded (§1.4).
+/// §3.3 TaskParticipant — on-device contact refs; never uploaded to Google
+/// (§1.4). A phone number *may* be stored (captured from the address book on
+/// mobile, or typed on desktop) so the participant can be called/WhatsApp'd —
+/// it travels only between the user's own devices in the ledger, never through
+/// Google.
 class TaskParticipants extends Table {
   TextColumn get id => text()();
   TextColumn get taskId => text().references(Tasks, #id)();
   TextColumn get contactLookupKey => text()();
   TextColumn get displayName => text()();
+  TextColumn get phone => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

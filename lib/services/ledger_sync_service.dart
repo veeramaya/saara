@@ -40,6 +40,10 @@ class LedgerSyncService {
     final entries = await db.select(db.taskTransitions).get();
     final areas = await db.select(db.areas).get();
     final results = await db.select(db.measurableResults).get();
+    // Participants travel too, so a contact added on one device — with the
+    // phone number to call/WhatsApp — is usable on the other (§9). This is the
+    // only channel their number ever crosses; it never goes through Google.
+    final participants = await db.select(db.taskParticipants).get();
 
     // Make sure this device names itself before exporting, so the other side
     // learns "Desktop"/"Mobile" for the entries we wrote.
@@ -56,6 +60,7 @@ class LedgerSyncService {
       'ledger': [for (final e in entries) e.toJson()],
       'areas': [for (final a in areas) a.toJson()],
       'results': [for (final r in results) r.toJson()],
+      'participants': [for (final p in participants) p.toJson()],
     };
   }
 
@@ -261,6 +266,20 @@ class LedgerSyncService {
           await db.into(db.tasks).insertOnConflictUpdate(t);
           summary.tasks++;
         }
+      }
+      // Participants — carry the contact + its phone across. Remap the taskId
+      // through the unify map so they land on the surviving task; skip any whose
+      // task isn't here (FK safety).
+      for (final j in (bundle['participants'] as List? ?? const [])) {
+        var p = TaskParticipant.fromJson(
+          j as Map<String, dynamic>,
+          serializer: _serializer,
+        );
+        final mapped = idRemap[p.taskId];
+        if (mapped != null) p = p.copyWith(taskId: mapped);
+        if (!await _exists(db.tasks, p.taskId)) continue;
+        await db.into(db.taskParticipants).insertOnConflictUpdate(p);
+        summary.participants++;
       }
       // Ledger, append-only. Remap the taskId of any entry whose task was folded
       // into a local twin, so history lands on the surviving row.
@@ -483,8 +502,9 @@ class MergeSummary {
   int ledgerEntries = 0;
   int areas = 0;
   int results = 0;
+  int participants = 0;
 
-  int get total => tasks + ledgerEntries + areas + results;
+  int get total => tasks + ledgerEntries + areas + results + participants;
   bool get isEmpty => total == 0;
 
   void add(MergeSummary other) {
@@ -492,6 +512,7 @@ class MergeSummary {
     ledgerEntries += other.ledgerEntries;
     areas += other.areas;
     results += other.results;
+    participants += other.participants;
   }
 
   @override

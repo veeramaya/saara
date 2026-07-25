@@ -1290,21 +1290,36 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   /// mobile-only, so rather than a button that throws, desktop captures the
   /// name directly — it's stored the same way and syncs the same way.
   Future<void> _addParticipantByName() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final nameCtl = TextEditingController();
+    final phoneCtl = TextEditingController();
+    final result = await showDialog<SimpleContact>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Add participant'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            hintText: 'Name',
-            border: OutlineInputBorder(),
-            helperText: 'Device contacts are available on mobile.',
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                hintText: 'Name',
+                border: OutlineInputBorder(),
+                helperText: 'Device contacts are available on mobile.',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: phoneCtl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                hintText: 'Phone (optional)',
+                border: OutlineInputBorder(),
+                helperText: 'For call / WhatsApp — with country code, e.g. +91…',
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -1312,18 +1327,29 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () {
+              final name = nameCtl.text.trim();
+              if (name.isEmpty) {
+                Navigator.pop(ctx);
+                return;
+              }
+              final phone = phoneCtl.text.trim();
+              Navigator.pop(
+                ctx,
+                SimpleContact(
+                  id: 'manual:${name.toLowerCase()}',
+                  name: name,
+                  phone: phone.isEmpty ? null : phone,
+                ),
+              );
+            },
             child: const Text('Add'),
           ),
         ],
       ),
     );
-    if (name == null || name.isEmpty) return;
-    setState(
-      () => _participants.add(
-        SimpleContact(id: 'manual:${name.toLowerCase()}', name: name),
-      ),
-    );
+    if (result == null) return;
+    setState(() => _participants.add(result));
   }
 
   Future<void> _pickParticipant() async {
@@ -1774,6 +1800,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
           taskId: id,
           contactLookupKey: c.id,
           displayName: c.name,
+          phone: Value(c.phone),
         ),
       );
     }

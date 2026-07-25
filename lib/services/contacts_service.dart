@@ -3,9 +3,10 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 /// A minimal contact reference — only what participant matching needs. The full
 /// contact (photo, numbers, etc.) is never read or stored (§1.4, §11).
 class SimpleContact {
-  const SimpleContact({required this.id, required this.name});
+  const SimpleContact({required this.id, required this.name, this.phone});
   final String id; // on-device contact id → stored as contact_lookup_key
   final String name;
+  final String? phone; // captured when picked, so it can sync + be dialled
 }
 
 /// §11 on-device contacts. Read-only, matched locally; nothing is uploaded.

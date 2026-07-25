@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -156,6 +156,10 @@ class AppDatabase extends _$AppDatabase {
           "UPDATE tasks SET publication_state = 'released' "
           "WHERE publication_state = 'draft'",
         );
+      }
+      if (from < 14) {
+        // Optional phone for a participant, so they can be called/WhatsApp'd.
+        await m.addColumn(taskParticipants, taskParticipants.phone);
       }
     },
     beforeOpen: (details) async {

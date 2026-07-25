@@ -1492,8 +1492,13 @@ class _Participants extends ConsumerWidget {
                 avatar: const Icon(Icons.person, size: 16),
                 label: Text(p.displayName),
                 tooltip: 'Call or WhatsApp ${p.displayName}',
-                onPressed: () =>
-                    _contact(context, ref, p.contactLookupKey, p.displayName),
+                onPressed: () => _contact(
+                  context,
+                  ref,
+                  p.contactLookupKey,
+                  p.displayName,
+                  p.phone,
+                ),
               ),
           ],
         );
@@ -1502,15 +1507,20 @@ class _Participants extends ConsumerWidget {
     );
   }
 
-  /// Resolve the contact's number(s) on demand and offer to Call or WhatsApp.
+  /// Offer to Call or WhatsApp a participant. Prefer the number stored with
+  /// them (typed, or captured on mobile and synced here via the ledger) so it
+  /// works on desktop too; otherwise resolve it on demand from the address book.
   Future<void> _contact(
     BuildContext context,
     WidgetRef ref,
     String contactId,
     String name,
+    String? storedPhone,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final phones = await ref.read(contactsServiceProvider).phonesFor(contactId);
+    final phones = (storedPhone != null && storedPhone.trim().isNotEmpty)
+        ? [storedPhone.trim()]
+        : await ref.read(contactsServiceProvider).phonesFor(contactId);
     if (phones.isEmpty) {
       messenger.showSnackBar(
         SnackBar(content: Text('No phone number found for $name.')),
