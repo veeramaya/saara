@@ -96,6 +96,36 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
     taskTransitions,
   )..where((t) => t.kind.equalsValue(LedgerEventKind.corrected))).get();
 
+  /// Actionable tasks with no area — the Unclassified bucket (§7.5). Excludes
+  /// deleted rows and recurring *templates* (their instances stand in). These
+  /// are what the user triages into the right area.
+  Future<List<Task>> unclassifiedTasks() {
+    return (select(tasks)
+          ..where((t) => t.deletedAt.isNull())
+          ..where((t) => t.areaId.isNull())
+          ..where((t) => t.rrule.isNull() | t.parentRecurringId.isNotNull())
+          ..where(
+            (t) => t.publicationState.equalsValue(PublicationState.released),
+          )
+          ..orderBy([(t) => OrderingTerm(expression: t.scheduledStart)]))
+        .get();
+  }
+
+  /// taskId → the device that first wrote it, from the `created` ledger entry.
+  /// Powers the Source filter/provenance without a per-task query.
+  Future<Map<String, String>> creationDevices() async {
+    final rows =
+        await (select(taskTransitions)
+              ..where((t) => t.kind.equalsValue(LedgerEventKind.created)))
+            .get();
+    final out = <String, String>{};
+    for (final r in rows) {
+      final d = r.deviceId;
+      if (d != null && d.isNotEmpty) out[r.taskId] = d;
+    }
+    return out;
+  }
+
   /// Non-deleted tasks assigned to [areaId] (§7.5 area task list). Recurring
   /// templates are excluded — only concrete instances/one-offs are actionable.
   Future<List<Task>> tasksForArea(String areaId) {

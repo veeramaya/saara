@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/reliability.dart';
 import '../../domain/report.dart';
 import '../../providers.dart';
+import '../common/top_menu.dart';
 import '../listeners/listeners_screen.dart' show listenerGapSuggestion;
 import 'integrity_wheel.dart';
 
@@ -23,6 +24,7 @@ class ReportsScreen extends ConsumerWidget {
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(reportSummaryProvider),
           ),
+          const SaaraTopMenu(),
         ],
       ),
       body: async.when(

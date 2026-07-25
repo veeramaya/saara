@@ -314,9 +314,35 @@ final unscheduledTasksProvider = FutureProvider<List<Task>>(
   (ref) => ref.watch(taskDaoProvider).unscheduledTasks(),
 );
 
+/// taskId → where it came from: "Google", or the device that created it
+/// ("Desktop"/"Mobile"), else "Saara". Powers the Source filter (§9). Google
+/// wins — a task pulled from Google is Google's regardless of any ledger echo.
+final taskOriginsProvider = FutureProvider<Map<String, String>>((ref) async {
+  final db = ref.watch(appDatabaseProvider);
+  final settings = ref.watch(appSettingsProvider);
+  final known = await settings.knownDevices();
+  final devices = await db.taskDao.creationDevices();
+  final tasks = await db.taskDao.allTasks();
+  final out = <String, String>{};
+  for (final t in tasks) {
+    if (t.source == TaskSource.gcalSync || t.source == TaskSource.gcalEvent) {
+      out[t.id] = 'Google';
+      continue;
+    }
+    final deviceId = devices[t.id];
+    out[t.id] = (deviceId == null ? null : known[deviceId]) ?? 'Saara';
+  }
+  return out;
+});
+
 /// Soft-deleted tasks — the Trash view (§7).
 final deletedTasksProvider = FutureProvider<List<Task>>(
   (ref) => ref.watch(taskDaoProvider).deletedTasks(),
+);
+
+/// Actionable tasks with no area — the Unclassified bucket shown in Areas (§7.5).
+final unclassifiedTasksProvider = FutureProvider<List<Task>>(
+  (ref) => ref.watch(taskDaoProvider).unclassifiedTasks(),
 );
 
 /// Set of task ids that have at least one capture (§7.6) — powers the

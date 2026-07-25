@@ -6,6 +6,8 @@ import '../../providers.dart';
 import 'add_area_screen.dart';
 import 'area_detail_screen.dart';
 import 'area_icons.dart';
+import 'unclassified_tasks_screen.dart';
+import '../common/top_menu.dart';
 
 /// §3.1 — broad life areas are capped so the wheel stays legible and focused.
 const _maxAreas = 10;
@@ -21,7 +23,10 @@ class AreasScreen extends ConsumerWidget {
 
     final count = areasAsync.valueOrNull?.length ?? 0;
     return Scaffold(
-      appBar: AppBar(title: const Text('Areas')),
+      appBar: AppBar(
+        title: const Text('Areas'),
+        actions: const [SaaraTopMenu()],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
         label: const Text('Add area'),
@@ -53,6 +58,10 @@ class AreasScreen extends ConsumerWidget {
               ),
             );
           }
+          // An extra tile for area-less tasks, shown only when some exist, so
+          // they're never stranded off the wheel (§7.5).
+          final unclassified =
+              ref.watch(unclassifiedTasksProvider).valueOrNull ?? const [];
           return GridView.builder(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -61,10 +70,72 @@ class AreasScreen extends ConsumerWidget {
               mainAxisSpacing: 12,
               mainAxisExtent: 150, // fixed height → no overflow, always scrolls
             ),
-            itemCount: areas.length,
-            itemBuilder: (_, i) => _AreaCard(area: areas[i]),
+            itemCount: areas.length + (unclassified.isEmpty ? 0 : 1),
+            itemBuilder: (_, i) => i < areas.length
+                ? _AreaCard(area: areas[i])
+                : _UnclassifiedCard(count: unclassified.length),
           );
         },
+      ),
+    );
+  }
+}
+
+/// The Unclassified tile — a dashed-feeling, muted card that opens the triage
+/// list. Deliberately set apart from real areas: it's a to-do, not a category.
+class _UnclassifiedCard extends StatelessWidget {
+  const _UnclassifiedCard({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      color: scheme.surfaceContainerHighest,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const UnclassifiedTasksScreen()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.help_outline,
+                  color: scheme.onSurfaceVariant,
+                  size: 22,
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Unclassified',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$count to file',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

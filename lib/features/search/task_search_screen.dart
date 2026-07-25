@@ -5,25 +5,25 @@ import 'package:intl/intl.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
+import '../common/top_menu.dart';
 import '../home/home_screen.dart' show AddTaskFab;
 import '../task_detail/task_detail_screen.dart';
 
 /// §7 global Tasks list + search. Browse every task/event across statuses,
 /// filter (open / done / missed…), search intelligently (free text, `has:`
 /// tokens, natural dates), sort, and tap through to edit or see attachments.
-enum _StatusFilter {
-  all,
-  drafts,
-  open,
-  done,
-  missed,
-  rejected,
-  events,
-  archived,
-  deleted,
-}
+enum _StatusFilter { all, open, done, missed, rejected, drafts, archived, deleted }
+
+/// Task vs event is a real distinction (Google Tasks vs Calendar, due-point vs
+/// time-block) — kept explicit, and filterable here.
+enum _TypeFilter { all, tasks, events }
+
+enum _DateFilter { all, today, tomorrow, week, overdue }
 
 enum _SortBy { dateAsc, dateDesc, titleAz, updatedDesc, status }
+
+/// Sentinel for the Area filter meaning "no area set" — the Unclassified bucket.
+const _unclassifiedArea = '__unclassified__';
 
 /// A completed task older than a year is "archived" — kept as history but out of
 /// the way. Age-based, so there's no separate storage or migration (§7).
@@ -84,6 +84,11 @@ class TaskSearchScreen extends ConsumerStatefulWidget {
 class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   final _search = TextEditingController();
   _StatusFilter _filter = _StatusFilter.all;
+  _TypeFilter _type = _TypeFilter.all;
+  _DateFilter _date = _DateFilter.all;
+  String? _area; // null = any area; _unclassifiedArea = none; else an area id
+  String? _source; // null = any; else 'Desktop' / 'Mobile' / 'Google'
+  Map<String, String> _origins = const {}; // taskId → origin label
   _SortBy _sort = _SortBy.dateAsc;
   Set<String> _withCaptures = const {};
 
@@ -93,7 +98,19 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     super.dispose();
   }
 
-  bool _matchesFilter(Task t, DateTime cutoff) {
+  /// All four filters must pass. Split apart so Status, Type, Date and Area are
+  /// independent — a user can ask for "open events in Health this week".
+  bool _matches(Task t, DateTime cutoff) =>
+      _matchesStatus(t, cutoff) &&
+      _matchesType(t) &&
+      _matchesDate(t) &&
+      _matchesArea(t) &&
+      _matchesSource(t);
+
+  bool _matchesSource(Task t) =>
+      _source == null || _origins[t.id] == _source;
+
+  bool _matchesStatus(Task t, DateTime cutoff) {
     final archived = _isArchived(t, cutoff);
     switch (_filter) {
       case _StatusFilter.all:
@@ -112,12 +129,46 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
         return !archived && t.status == TaskStatus.missed;
       case _StatusFilter.rejected:
         return !archived && t.status == TaskStatus.rejected;
-      case _StatusFilter.events:
-        return !archived && t.kind == TaskKind.event;
       case _StatusFilter.archived:
         return archived;
       case _StatusFilter.deleted:
         return true; // the deleted provider already scopes these
+    }
+  }
+
+  bool _matchesType(Task t) => switch (_type) {
+    _TypeFilter.all => true,
+    _TypeFilter.tasks => t.kind != TaskKind.event,
+    _TypeFilter.events => t.kind == TaskKind.event,
+  };
+
+  bool _matchesArea(Task t) {
+    if (_area == null) return true;
+    if (_area == _unclassifiedArea) return t.areaId == null;
+    return t.areaId == _area;
+  }
+
+  bool _matchesDate(Task t) {
+    if (_date == _DateFilter.all) return true;
+    final when = t.scheduledStart ?? t.dueDate;
+    if (when == null) return false;
+    final now = DateTime.now();
+    switch (_date) {
+      case _DateFilter.all:
+        return true;
+      case _DateFilter.today:
+        final s = _startOfDay(now);
+        return !when.isBefore(s) && when.isBefore(s.add(const Duration(days: 1)));
+      case _DateFilter.tomorrow:
+        final s = _startOfDay(now.add(const Duration(days: 1)));
+        return !when.isBefore(s) && when.isBefore(s.add(const Duration(days: 1)));
+      case _DateFilter.week:
+        final s = _startOfDay(now);
+        return !when.isBefore(s) && when.isBefore(s.add(const Duration(days: 7)));
+      case _DateFilter.overdue:
+        return when.isBefore(now) &&
+            t.status != TaskStatus.completed &&
+            t.status != TaskStatus.rejected;
     }
   }
 
@@ -216,6 +267,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     final areaName = {for (final a in areas) a.id: a.displayName};
     _withCaptures =
         ref.watch(taskIdsWithCapturesProvider).valueOrNull ?? const {};
+    _origins = ref.watch(taskOriginsProvider).valueOrNull ?? const {};
     final childCounts =
         ref.watch(childTaskCountsProvider).valueOrNull ?? const {};
     final q = _search.text.trim().toLowerCase();
@@ -239,6 +291,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
             tooltip: 'Search tips',
             onPressed: _showSearchTips,
           ),
+          const SaaraTopMenu(),
         ],
       ),
       // §7 create from wherever you are, not only from Today.
@@ -268,15 +321,66 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                for (final f in _StatusFilter.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(_label(f)),
-                      selected: _filter == f,
-                      onSelected: (_) => setState(() => _filter = f),
-                    ),
-                  ),
+                _FilterDropdown<_StatusFilter>(
+                  label: 'Status',
+                  value: _filter,
+                  isDefault: _filter == _StatusFilter.all,
+                  options: [
+                    for (final f in _StatusFilter.values) (f, _label(f)),
+                  ],
+                  onChanged: (f) => setState(() => _filter = f),
+                ),
+                const SizedBox(width: 8),
+                _FilterDropdown<_TypeFilter>(
+                  label: 'Type',
+                  value: _type,
+                  isDefault: _type == _TypeFilter.all,
+                  options: const [
+                    (_TypeFilter.all, 'All'),
+                    (_TypeFilter.tasks, 'To-dos'),
+                    (_TypeFilter.events, 'Events'),
+                  ],
+                  onChanged: (t) => setState(() => _type = t),
+                ),
+                const SizedBox(width: 8),
+                _FilterDropdown<_DateFilter>(
+                  label: 'Date',
+                  value: _date,
+                  isDefault: _date == _DateFilter.all,
+                  options: const [
+                    (_DateFilter.all, 'Any date'),
+                    (_DateFilter.today, 'Today'),
+                    (_DateFilter.tomorrow, 'Tomorrow'),
+                    (_DateFilter.week, 'This week'),
+                    (_DateFilter.overdue, 'Overdue'),
+                  ],
+                  onChanged: (d) => setState(() => _date = d),
+                ),
+                const SizedBox(width: 8),
+                _FilterDropdown<String?>(
+                  label: 'Area',
+                  value: _area,
+                  isDefault: _area == null,
+                  options: [
+                    (null, 'All areas'),
+                    (_unclassifiedArea, 'Unclassified'),
+                    for (final a in areas) (a.id, a.displayName),
+                  ],
+                  onChanged: (a) => setState(() => _area = a),
+                ),
+                const SizedBox(width: 8),
+                _FilterDropdown<String?>(
+                  label: 'Source',
+                  value: _source,
+                  isDefault: _source == null,
+                  options: const [
+                    (null, 'Any source'),
+                    ('Desktop', 'Desktop'),
+                    ('Mobile', 'Mobile'),
+                    ('Google', 'Google'),
+                  ],
+                  onChanged: (s) => setState(() => _source = s),
+                ),
               ],
             ),
           ),
@@ -292,8 +396,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                 final items =
                     all
                         .where(
-                          (t) =>
-                              _matchesFilter(t, cutoff) && _matchesQuery(t, q),
+                          (t) => _matches(t, cutoff) && _matchesQuery(t, q),
                         )
                         .toList()
                       ..sort(_compare);
@@ -325,12 +428,11 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
 
   String _label(_StatusFilter f) => switch (f) {
     _StatusFilter.all => 'All',
-    _StatusFilter.drafts => 'Drafts',
     _StatusFilter.open => 'Open',
     _StatusFilter.done => 'Done',
     _StatusFilter.missed => 'Missed',
     _StatusFilter.rejected => 'Rejected',
-    _StatusFilter.events => 'Events',
+    _StatusFilter.drafts => 'Drafts',
     _StatusFilter.archived => 'Archived',
     _StatusFilter.deleted => 'Deleted',
   };
@@ -385,6 +487,74 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Restored “${t.title}”')));
     }
+  }
+}
+
+/// A compact "Label: value ▾" chip that opens a menu — one per filter, so the
+/// Tasks screen reads as four small controls instead of a long row of chips.
+class _FilterDropdown<T> extends StatelessWidget {
+  const _FilterDropdown({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    required this.isDefault,
+  });
+
+  final String label;
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T> onChanged;
+
+  /// When false, the control is tinted to signal an active (non-"all") filter.
+  final bool isDefault;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final current = options.firstWhere(
+      (o) => o.$1 == value,
+      orElse: () => options.first,
+    );
+    return PopupMenuButton<T>(
+      initialValue: value,
+      onSelected: onChanged,
+      tooltip: label,
+      itemBuilder: (_) => [
+        for (final (v, l) in options)
+          PopupMenuItem(value: v, child: Text(l)),
+      ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+        decoration: BoxDecoration(
+          color: isDefault ? null : scheme.secondaryContainer,
+          border: Border.all(
+            color: isDefault ? scheme.outlineVariant : scheme.secondary,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isDefault ? label : '$label: ${current.$2}',
+              style: TextStyle(
+                color: isDefault
+                    ? scheme.onSurfaceVariant
+                    : scheme.onSecondaryContainer,
+              ),
+            ),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 20,
+              color: isDefault
+                  ? scheme.onSurfaceVariant
+                  : scheme.onSecondaryContainer,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

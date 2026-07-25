@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../core/time_context.dart';
+import '../common/top_menu.dart';
 import '../../data/database.dart';
 import '../../providers.dart';
 import '../../services/ai/ai_config.dart';
@@ -92,6 +93,7 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
               context,
             ).push(MaterialPageRoute(builder: (_) => const AiSettingsScreen())),
           ),
+          const SaaraTopMenu(),
         ],
       ),
       body: configAsync.when(
