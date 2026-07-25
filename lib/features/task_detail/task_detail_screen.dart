@@ -1485,15 +1485,15 @@ class _Participants extends ConsumerWidget {
           spacing: 8,
           runSpacing: 4,
           children: [
-            // Tap a participant to call them — the number is read from your
-            // address book at that moment and dialled, never stored.
+            // Tap a participant to call or WhatsApp them — the number is read
+            // from your address book at that moment and used, never stored.
             for (final p in people)
               ActionChip(
-                avatar: const Icon(Icons.call_outlined, size: 16),
+                avatar: const Icon(Icons.person, size: 16),
                 label: Text(p.displayName),
-                tooltip: 'Call ${p.displayName}',
+                tooltip: 'Call or WhatsApp ${p.displayName}',
                 onPressed: () =>
-                    _call(context, ref, p.contactLookupKey, p.displayName),
+                    _contact(context, ref, p.contactLookupKey, p.displayName),
               ),
           ],
         );
@@ -1502,7 +1502,8 @@ class _Participants extends ConsumerWidget {
     );
   }
 
-  Future<void> _call(
+  /// Resolve the contact's number(s) on demand and offer to Call or WhatsApp.
+  Future<void> _contact(
     BuildContext context,
     WidgetRef ref,
     String contactId,
@@ -1516,42 +1517,81 @@ class _Participants extends ConsumerWidget {
       );
       return;
     }
-    // One number → dial it; several → let the user pick which.
-    String? number = phones.first;
-    if (phones.length > 1 && context.mounted) {
-      number = await showModalBottomSheet<String>(
-        context: context,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final n in phones)
-                ListTile(
-                  leading: const Icon(Icons.call_outlined),
-                  title: Text(n),
-                  onTap: () => Navigator.pop(ctx, n),
+    if (!context.mounted) return;
+    final single = phones.length == 1;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(name, style: Theme.of(ctx).textTheme.titleMedium),
+              ),
+            ),
+            for (final n in phones) ...[
+              if (!single)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(n, style: Theme.of(ctx).textTheme.bodySmall),
+                  ),
                 ),
+              ListTile(
+                leading: const Icon(Icons.call_outlined),
+                title: const Text('Call'),
+                subtitle: single ? Text(n) : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _launch(
+                    context,
+                    Uri(scheme: 'tel', path: _dialDigits(n)),
+                    'call',
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.chat_outlined),
+                title: const Text('WhatsApp'),
+                subtitle: single ? Text(n) : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _launch(
+                    context,
+                    Uri.parse('https://wa.me/${_waDigits(n)}'),
+                    'WhatsApp',
+                  );
+                },
+              ),
             ],
-          ),
+          ],
         ),
-      );
-    }
-    if (number == null) return;
-    final uri = Uri(
-      scheme: 'tel',
-      path: number.replaceAll(RegExp(r'[^0-9+#*]'), ''),
+      ),
     );
+  }
+
+  // A dialer keeps + and the DTMF chars; WhatsApp's wa.me wants digits only
+  // (country code included, no +).
+  String _dialDigits(String n) => n.replaceAll(RegExp(r'[^0-9+#*]'), '');
+  String _waDigits(String n) => n.replaceAll(RegExp(r'[^0-9]'), '');
+
+  Future<void> _launch(BuildContext context, Uri uri, String what) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok && context.mounted) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('No app available to place the call.')),
+          SnackBar(content: Text('No app available to $what.')),
         );
       }
     } catch (_) {
       if (context.mounted) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('Could not start the call.')),
+          SnackBar(content: Text('Could not start the $what.')),
         );
       }
     }
