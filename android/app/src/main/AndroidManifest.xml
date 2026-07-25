@@ -100,6 +100,15 @@
         <intent>
             <action android:name="android.speech.RecognitionService"/>
         </intent>
+        <!-- §11 call a task participant: url_launcher must see a dialer -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tel"/>
+        </intent>
         <!-- §10 Health Connect package visibility -->
         <package android:name="com.google.android.apps.healthdata"/>
     </queries>

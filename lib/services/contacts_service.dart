@@ -28,4 +28,20 @@ class ContactsService {
     out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return out;
   }
+
+  /// The phone number(s) for one contact, read **on demand** so we can place a
+  /// call — never stored (§1.4, §11): Saara keeps only the name and the id, and
+  /// looks the number up from the device address book at the moment you dial.
+  /// Empty if the contact is gone, has no number, or permission is refused.
+  Future<List<String>> phonesFor(String contactId) async {
+    if (!await FlutterContacts.requestPermission(readonly: true)) {
+      return const [];
+    }
+    final c = await FlutterContacts.getContact(contactId, withProperties: true);
+    if (c == null) return const [];
+    return [
+      for (final p in c.phones)
+        if (p.number.trim().isNotEmpty) p.number.trim(),
+    ];
+  }
 }

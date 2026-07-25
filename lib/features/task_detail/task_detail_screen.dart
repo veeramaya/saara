@@ -1485,16 +1485,76 @@ class _Participants extends ConsumerWidget {
           spacing: 8,
           runSpacing: 4,
           children: [
+            // Tap a participant to call them — the number is read from your
+            // address book at that moment and dialled, never stored.
             for (final p in people)
-              Chip(
-                avatar: const Icon(Icons.person, size: 16),
+              ActionChip(
+                avatar: const Icon(Icons.call_outlined, size: 16),
                 label: Text(p.displayName),
+                tooltip: 'Call ${p.displayName}',
+                onPressed: () =>
+                    _call(context, ref, p.contactLookupKey, p.displayName),
               ),
           ],
         );
       },
       orElse: () => const SizedBox.shrink(),
     );
+  }
+
+  Future<void> _call(
+    BuildContext context,
+    WidgetRef ref,
+    String contactId,
+    String name,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final phones = await ref.read(contactsServiceProvider).phonesFor(contactId);
+    if (phones.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('No phone number found for $name.')),
+      );
+      return;
+    }
+    // One number → dial it; several → let the user pick which.
+    String? number = phones.first;
+    if (phones.length > 1 && context.mounted) {
+      number = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final n in phones)
+                ListTile(
+                  leading: const Icon(Icons.call_outlined),
+                  title: Text(n),
+                  onTap: () => Navigator.pop(ctx, n),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (number == null) return;
+    final uri = Uri(
+      scheme: 'tel',
+      path: number.replaceAll(RegExp(r'[^0-9+#*]'), ''),
+    );
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No app available to place the call.')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Could not start the call.')),
+        );
+      }
+    }
   }
 }
 
