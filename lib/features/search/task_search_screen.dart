@@ -284,7 +284,9 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
               controller: _search,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                hintText: 'title · "today" · "jul 20" · has:link · overdue',
+                // Dates/status/area now live in the header filters, so the box
+                // is for free text; power tokens still work (see the ? tips).
+                hintText: 'Search titles, notes, people, links…',
                 prefixIcon: const Icon(Icons.search),
                 border: const OutlineInputBorder(),
                 suffixIcon: _search.text.isEmpty
@@ -598,7 +600,9 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
             'Filters (type exactly):\n'
             '  • has:link · has:doc · has:meeting\n'
             '  • has:image · has:place · has:capture\n\n'
-            'Use the ⇅ Sort menu for order (date, title, status, recent). '
+            'Sort and filter from the column headers above the list — tap a '
+            'header (Title, Date, Status…) to order by it or narrow to a value. '
+            'Search narrows *within* whatever the headers have filtered.\n\n'
             'For anything more free-form, just ask in the Saara tab.',
           ),
         ),
