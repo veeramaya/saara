@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -7,8 +8,12 @@ import '../../providers.dart';
 import '../task_detail/task_detail_screen.dart';
 
 /// §7.5 the Unclassified bucket: every actionable task that has no area, with
-/// inline filing. A task without an area is invisible to the wheel and its
-/// score, so this is where you sweep them into the right place — one tap each.
+/// inline filing.
+///
+/// Repeats and recurring occurrences are **grouped by title**, so a weekly call
+/// shows once — not one row per date. You file the whole group in a single tap,
+/// which is what "classify this task" means to a person; otherwise filing one
+/// occurrence left its siblings behind and it looked like nothing happened.
 class UnclassifiedTasksScreen extends ConsumerWidget {
   const UnclassifiedTasksScreen({super.key});
 
@@ -34,11 +39,17 @@ class UnclassifiedTasksScreen extends ConsumerWidget {
               ),
             );
           }
+          // One entry per title; the value is every area-less task under it.
+          final groups =
+              groupBy(tasks, (Task t) => t.title.trim()).entries.toList()..sort(
+                (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
+              );
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: tasks.length,
+            itemCount: groups.length,
             separatorBuilder: (_, i) => const Divider(height: 1),
-            itemBuilder: (_, i) => _UnclassifiedRow(task: tasks[i], areas: areas),
+            itemBuilder: (_, i) =>
+                _UnclassifiedRow(tasks: groups[i].value, areas: areas),
           );
         },
       ),
@@ -47,14 +58,19 @@ class UnclassifiedTasksScreen extends ConsumerWidget {
 }
 
 class _UnclassifiedRow extends ConsumerWidget {
-  const _UnclassifiedRow({required this.task, required this.areas});
-  final Task task;
+  const _UnclassifiedRow({required this.tasks, required this.areas});
+
+  /// All area-less tasks sharing one title (a single call, or a whole series).
+  final List<Task> tasks;
   final List<Area> areas;
 
   Future<void> _fileUnder(WidgetRef ref, String areaId) async {
-    // Re-filing an unfiled task is still a correction in the ledger — the
-    // adjusting entry records where it landed, same as any re-file (§4.3).
-    await ref.read(taskServiceProvider).correctArea(task, areaId);
+    final service = ref.read(taskServiceProvider);
+    // File every occurrence — re-filing an unfiled task is a ledger correction
+    // (§4.3), recorded per occurrence so the history stays truthful.
+    for (final t in tasks) {
+      await service.correctArea(t, areaId);
+    }
     ref.invalidate(unclassifiedTasksProvider);
     ref.invalidate(allTasksProvider);
     ref.invalidate(areaScoresProvider);
@@ -64,26 +80,34 @@ class _UnclassifiedRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final when = task.scheduledStart ?? task.dueDate;
+    final first = tasks.first;
+    final dates =
+        tasks
+            .map((t) => t.scheduledStart ?? t.dueDate)
+            .whereType<DateTime>()
+            .toList()
+          ..sort();
+    final count = tasks.length;
     final subtitle = <String>[
-      if (when != null) DateFormat('MMM d').format(when),
-      task.status.name,
+      if (count > 1)
+        '$count dates'
+      else if (dates.isNotEmpty)
+        DateFormat('MMM d').format(dates.first),
+      if (count > 1 && dates.isNotEmpty)
+        'from ${DateFormat('MMM d').format(dates.first)}',
     ].join(' · ');
 
     return ListTile(
-      title: Text(
-        task.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(subtitle),
+      title: Text(first.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: subtitle.isEmpty ? null : Text(subtitle),
+      // Tapping opens the first occurrence; filing acts on the whole group.
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
+        MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: first.id)),
       ),
       trailing: areas.isEmpty
           ? null
           : PopupMenuButton<String>(
-              tooltip: 'File under…',
+              tooltip: count > 1 ? 'File all $count under…' : 'File under…',
               onSelected: (areaId) => _fileUnder(ref, areaId),
               itemBuilder: (_) => [
                 for (final a in areas)
@@ -98,7 +122,7 @@ class _UnclassifiedRow extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'File',
+                      count > 1 ? 'File all' : 'File',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.primary,
                       ),

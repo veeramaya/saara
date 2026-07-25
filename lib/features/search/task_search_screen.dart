@@ -12,15 +12,24 @@ import '../task_detail/task_detail_screen.dart';
 /// §7 global Tasks list + search. Browse every task/event across statuses,
 /// filter (open / done / missed…), search intelligently (free text, `has:`
 /// tokens, natural dates), sort, and tap through to edit or see attachments.
-enum _StatusFilter { all, open, done, missed, rejected, drafts, archived, deleted }
+enum _StatusFilter {
+  all,
+  open,
+  done,
+  missed,
+  rejected,
+  drafts,
+  archived,
+  deleted,
+}
 
 /// Task vs event is a real distinction (Google Tasks vs Calendar, due-point vs
 /// time-block) — kept explicit, and filterable here.
 enum _TypeFilter { all, tasks, events }
 
-enum _DateFilter { all, today, tomorrow, week, overdue }
-
-enum _SortBy { dateAsc, dateDesc, titleAz, updatedDesc, status }
+/// The column a user sorts by; direction (asc/desc) is a separate toggle, the
+/// way a spreadsheet header works.
+enum _SortField { date, title, status, updated }
 
 /// Sentinel for the Area filter meaning "no area set" — the Unclassified bucket.
 const _unclassifiedArea = '__unclassified__';
@@ -85,11 +94,12 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   final _search = TextEditingController();
   _StatusFilter _filter = _StatusFilter.all;
   _TypeFilter _type = _TypeFilter.all;
-  _DateFilter _date = _DateFilter.all;
+  DateTimeRange? _dateRange; // null = any date; else an inclusive [from, to]
   String? _area; // null = any area; _unclassifiedArea = none; else an area id
   String? _source; // null = any; else 'Desktop' / 'Mobile' / 'Google'
   Map<String, String> _origins = const {}; // taskId → origin label
-  _SortBy _sort = _SortBy.dateAsc;
+  _SortField _sortField = _SortField.date;
+  bool _sortAsc = true;
   Set<String> _withCaptures = const {};
 
   @override
@@ -107,8 +117,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
       _matchesArea(t) &&
       _matchesSource(t);
 
-  bool _matchesSource(Task t) =>
-      _source == null || _origins[t.id] == _source;
+  bool _matchesSource(Task t) => _source == null || _origins[t.id] == _source;
 
   bool _matchesStatus(Task t, DateTime cutoff) {
     final archived = _isArchived(t, cutoff);
@@ -149,27 +158,14 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   }
 
   bool _matchesDate(Task t) {
-    if (_date == _DateFilter.all) return true;
+    final range = _dateRange;
+    if (range == null) return true;
     final when = t.scheduledStart ?? t.dueDate;
     if (when == null) return false;
-    final now = DateTime.now();
-    switch (_date) {
-      case _DateFilter.all:
-        return true;
-      case _DateFilter.today:
-        final s = _startOfDay(now);
-        return !when.isBefore(s) && when.isBefore(s.add(const Duration(days: 1)));
-      case _DateFilter.tomorrow:
-        final s = _startOfDay(now.add(const Duration(days: 1)));
-        return !when.isBefore(s) && when.isBefore(s.add(const Duration(days: 1)));
-      case _DateFilter.week:
-        final s = _startOfDay(now);
-        return !when.isBefore(s) && when.isBefore(s.add(const Duration(days: 7)));
-      case _DateFilter.overdue:
-        return when.isBefore(now) &&
-            t.status != TaskStatus.completed &&
-            t.status != TaskStatus.rejected;
-    }
+    // Inclusive of both end days: [from 00:00, to 24:00).
+    final from = _startOfDay(range.start);
+    final to = _startOfDay(range.end).add(const Duration(days: 1));
+    return !when.isBefore(from) && when.isBefore(to);
   }
 
   bool _matchesQuery(Task t, String q) {
@@ -229,32 +225,33 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   }
 
   int _compare(Task a, Task b) {
-    DateTime? wa() => a.scheduledStart ?? a.dueDate;
-    DateTime? wb() => b.scheduledStart ?? b.dueDate;
-    // Undated items sort last for date sorts.
-    int byDate(bool asc) {
-      final da = wa(), db = wb();
+    // Date sorts keep undated items last in *both* directions — an item with no
+    // date isn't "newest" or "oldest", it's simply unscheduled.
+    if (_sortField == _SortField.date) {
+      final da = a.scheduledStart ?? a.dueDate;
+      final db = b.scheduledStart ?? b.dueDate;
       if (da == null && db == null) return 0;
       if (da == null) return 1;
       if (db == null) return -1;
-      return asc ? da.compareTo(db) : db.compareTo(da);
+      final c = da.compareTo(db);
+      return _sortAsc ? c : -c;
     }
-
-    return switch (_sort) {
-      _SortBy.dateAsc => byDate(true),
-      _SortBy.dateDesc => byDate(false),
-      _SortBy.titleAz => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-      _SortBy.updatedDesc => b.updatedAt.compareTo(a.updatedAt),
-      _SortBy.status => a.status.index.compareTo(b.status.index),
+    final base = switch (_sortField) {
+      _SortField.title => a.title.toLowerCase().compareTo(
+        b.title.toLowerCase(),
+      ),
+      _SortField.status => a.status.index.compareTo(b.status.index),
+      _SortField.updated => a.updatedAt.compareTo(b.updatedAt),
+      _SortField.date => 0, // handled above
     };
+    return _sortAsc ? base : -base;
   }
 
-  String _sortLabel(_SortBy s) => switch (s) {
-    _SortBy.dateAsc => 'Date ↑ (soonest)',
-    _SortBy.dateDesc => 'Date ↓ (latest)',
-    _SortBy.titleAz => 'Title A–Z',
-    _SortBy.updatedDesc => 'Recently updated',
-    _SortBy.status => 'Status',
+  String _sortLabel(_SortField f) => switch (f) {
+    _SortField.date => 'Date',
+    _SortField.title => 'Title',
+    _SortField.status => 'Status',
+    _SortField.updated => 'Updated',
   };
 
   @override
@@ -276,16 +273,6 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
       appBar: AppBar(
         title: const Text('All tasks'),
         actions: [
-          PopupMenuButton<_SortBy>(
-            icon: const Icon(Icons.sort),
-            tooltip: 'Sort',
-            initialValue: _sort,
-            onSelected: (s) => setState(() => _sort = s),
-            itemBuilder: (_) => [
-              for (final s in _SortBy.values)
-                PopupMenuItem(value: s, child: Text(_sortLabel(s))),
-            ],
-          ),
           IconButton(
             icon: const Icon(Icons.help_outline),
             tooltip: 'Search tips',
@@ -316,10 +303,14 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
               ),
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
+          // Filters reflow onto as many rows as the width needs — one tidy set
+          // of controls, not a row you have to scroll sideways.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _FilterDropdown<_StatusFilter>(
                   label: 'Status',
@@ -330,7 +321,6 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                   ],
                   onChanged: (f) => setState(() => _filter = f),
                 ),
-                const SizedBox(width: 8),
                 _FilterDropdown<_TypeFilter>(
                   label: 'Type',
                   value: _type,
@@ -342,21 +332,6 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                   ],
                   onChanged: (t) => setState(() => _type = t),
                 ),
-                const SizedBox(width: 8),
-                _FilterDropdown<_DateFilter>(
-                  label: 'Date',
-                  value: _date,
-                  isDefault: _date == _DateFilter.all,
-                  options: const [
-                    (_DateFilter.all, 'Any date'),
-                    (_DateFilter.today, 'Today'),
-                    (_DateFilter.tomorrow, 'Tomorrow'),
-                    (_DateFilter.week, 'This week'),
-                    (_DateFilter.overdue, 'Overdue'),
-                  ],
-                  onChanged: (d) => setState(() => _date = d),
-                ),
-                const SizedBox(width: 8),
                 _FilterDropdown<String?>(
                   label: 'Area',
                   value: _area,
@@ -368,7 +343,6 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                   ],
                   onChanged: (a) => setState(() => _area = a),
                 ),
-                const SizedBox(width: 8),
                 _FilterDropdown<String?>(
                   label: 'Source',
                   value: _source,
@@ -380,6 +354,17 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                     ('Google', 'Google'),
                   ],
                   onChanged: (s) => setState(() => _source = s),
+                ),
+                _DateRangeChip(
+                  range: _dateRange,
+                  onPick: _pickDateRange,
+                  onClear: () => setState(() => _dateRange = null),
+                ),
+                _SortControl(
+                  label: _sortLabel(_sortField),
+                  ascending: _sortAsc,
+                  onField: (f) => setState(() => _sortField = f),
+                  onToggle: () => setState(() => _sortAsc = !_sortAsc),
                 ),
               ],
             ),
@@ -437,6 +422,23 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     _StatusFilter.deleted => 'Deleted',
   };
 
+  Future<void> _pickDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 5),
+      initialDateRange:
+          _dateRange ??
+          DateTimeRange(
+            start: _startOfDay(now),
+            end: _startOfDay(now).add(const Duration(days: 7)),
+          ),
+      helpText: 'Show tasks between',
+    );
+    if (picked != null) setState(() => _dateRange = picked);
+  }
+
   void _showSearchTips() {
     showDialog<void>(
       context: context,
@@ -490,6 +492,166 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   }
 }
 
+/// Shared look for every control in the filter bar: a pill that's quiet when
+/// at its default and tinted when it's actively narrowing the list. Keeping the
+/// shape in one place is what makes the bar read as a single system.
+class _FilterPill extends StatelessWidget {
+  const _FilterPill({
+    required this.child,
+    required this.active,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final Widget child;
+  final bool active;
+  final VoidCallback? onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final pill = InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: active ? scheme.secondaryContainer : null,
+          border: Border.all(
+            color: active ? scheme.secondary : scheme.outlineVariant,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: DefaultTextStyle.merge(
+          style: TextStyle(
+            color: active
+                ? scheme.onSecondaryContainer
+                : scheme.onSurfaceVariant,
+          ),
+          child: IconTheme.merge(
+            data: IconThemeData(
+              size: 18,
+              color: active
+                  ? scheme.onSecondaryContainer
+                  : scheme.onSurfaceVariant,
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+    return tooltip == null ? pill : Tooltip(message: tooltip!, child: pill);
+  }
+}
+
+/// The Date control: opens a from–to range picker; shows the chosen span and
+/// clears with an ✕. A range (not presets) is how people actually scan a
+/// period — "everything between the 1st and the 15th".
+class _DateRangeChip extends StatelessWidget {
+  const _DateRangeChip({
+    required this.range,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  final DateTimeRange? range;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = range != null;
+    final fmt = DateFormat('MMM d');
+    return _FilterPill(
+      active: active,
+      onTap: onPick,
+      tooltip: 'Filter by a date range',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.date_range_outlined),
+          const SizedBox(width: 6),
+          Text(
+            active
+                ? '${fmt.format(range!.start)} → ${fmt.format(range!.end)}'
+                : 'Date',
+          ),
+          if (active)
+            GestureDetector(
+              onTap: onClear,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.close, size: 16),
+              ),
+            )
+          else
+            const Icon(Icons.arrow_drop_down, size: 20),
+        ],
+      ),
+    );
+  }
+}
+
+/// The Sort control: pick the column, and a separate ↑/↓ button flips the
+/// direction — the spreadsheet gesture, adapted to a list.
+class _SortControl extends StatelessWidget {
+  const _SortControl({
+    required this.label,
+    required this.ascending,
+    required this.onField,
+    required this.onToggle,
+  });
+
+  final String label;
+  final bool ascending;
+  final ValueChanged<_SortField> onField;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return _FilterPill(
+      active: false,
+      onTap: null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.swap_vert, size: 18),
+          const SizedBox(width: 6),
+          PopupMenuButton<_SortField>(
+            tooltip: 'Sort by',
+            onSelected: onField,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: _SortField.date, child: Text('Date')),
+              PopupMenuItem(value: _SortField.title, child: Text('Title')),
+              PopupMenuItem(value: _SortField.status, child: Text('Status')),
+              PopupMenuItem(value: _SortField.updated, child: Text('Updated')),
+            ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label),
+                const Icon(Icons.arrow_drop_down, size: 20),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Icon(
+                ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 16,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A compact "Label: value ▾" chip that opens a menu — one per filter, so the
 /// Tasks screen reads as four small controls instead of a long row of chips.
 class _FilterDropdown<T> extends StatelessWidget {
@@ -521,8 +683,7 @@ class _FilterDropdown<T> extends StatelessWidget {
       onSelected: onChanged,
       tooltip: label,
       itemBuilder: (_) => [
-        for (final (v, l) in options)
-          PopupMenuItem(value: v, child: Text(l)),
+        for (final (v, l) in options) PopupMenuItem(value: v, child: Text(l)),
       ],
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),

@@ -1667,6 +1667,9 @@ class _AreaRow extends ConsumerWidget {
     ref.invalidate(areaScoresProvider);
     ref.invalidate(overallEffectivenessProvider);
     ref.invalidate(allTasksProvider);
+    ref.invalidate(
+      unclassifiedTasksProvider,
+    ); // it just left (or joined) the bucket
     if (!context.mounted) return;
     messenger.showSnackBar(
       SnackBar(

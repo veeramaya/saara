@@ -3,7 +3,7 @@ description: "Saara — a local-first personal integrity & productivity agent (R
 publish_to: 'none'
 
 # App version. See §7/§14 — free app, no billing.
-version: 1.4.6+146
+version: 1.4.7+147
 
 environment:
   sdk: ^3.12.2
