@@ -350,9 +350,17 @@ class GoogleSyncService {
     final end = start.add(Duration(minutes: durationMin ?? 60));
     final body = <String, dynamic>{
       'summary': title,
-      // Send in UTC (Z) — Google accepts it and renders in the user's zone.
-      'start': {'dateTime': start.toUtc().toIso8601String()},
-      'end': {'dateTime': end.toUtc().toIso8601String()},
+      // Send in UTC (Z) — Google renders in the viewer's zone. A **recurring**
+      // event is additionally *rejected* without an explicit `timeZone`
+      // ("Missing time zone definition for start time"), so name it: UTC, to
+      // match the UTC instant we send. This anchors the series to a fixed
+      // instant (Saara's absolute-time model) — correct here, and India has no
+      // DST to drift it.
+      'start': {
+        'dateTime': start.toUtc().toIso8601String(),
+        'timeZone': 'UTC',
+      },
+      'end': {'dateTime': end.toUtc().toIso8601String(), 'timeZone': 'UTC'},
     };
     if (notes != null) body['description'] = notes;
     if (location != null) body['location'] = location;
