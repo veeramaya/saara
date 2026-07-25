@@ -67,6 +67,44 @@ void main() {
     });
   });
 
+  group('a bounded series actually stops', () {
+    test('no occurrence is generated past the UNTIL date', () async {
+      // The "Ends" field encodes UNTIL onto the rule. The engine must honour it,
+      // or the series still runs forever regardless of what the UI showed.
+      final anchor = DateTime(2026, 7, 20, 5, 30);
+      final end = DateTime(2026, 7, 23, 23, 59, 59); // ends after the 23rd
+      await db.taskDao.insertTask(
+        TasksCompanion.insert(
+          id: 'tpl-bounded',
+          title: 'Standup',
+          rrule: Value(rruleWithUntil('FREQ=DAILY', end)),
+          scheduledStart: Value(anchor),
+          dueDate: Value(anchor),
+          createdAt: anchor,
+          updatedAt: anchor,
+        ),
+      );
+      final tpl = (await db.taskDao.findById('tpl-bounded'))!;
+
+      // Ask for a window that extends well past the end.
+      await engine.materialize(
+        tpl,
+        from: DateTime(2026, 7, 20),
+        until: DateTime(2026, 7, 30),
+      );
+
+      final days = (await db.taskDao.instancesOfTemplate(
+        'tpl-bounded',
+      )).map((t) => t.scheduledStart!.day).toSet();
+      expect(days, {
+        20,
+        21,
+        22,
+        23,
+      }, reason: 'generation stops on the 23rd — nothing on the 24th onward');
+    });
+  });
+
   group('All events', () {
     test('retimes every date and the rule, keeping each own date', () async {
       final tpl = await dailyWalk();

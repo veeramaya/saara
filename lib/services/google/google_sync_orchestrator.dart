@@ -15,12 +15,23 @@ class SyncSummary {
   int deletedRemote = 0; // deleted in Saara → deleted on Google
   int importedEvents = 0; // new Google Calendar events → Saara timeline
 
+  /// Set when the Calendar half of the sync failed. Tasks can still succeed, so
+  /// this is reported rather than thrown — but it must be *visible*, not
+  /// swallowed: a missing Calendar scope or a disabled API otherwise looks
+  /// exactly like "nothing to sync".
+  String? calendarError;
+
   @override
-  String toString() =>
-      'Imported $imported task${imported == 1 ? '' : 's'} · '
-      '$importedEvents calendar event${importedEvents == 1 ? '' : 's'}\n'
-      'Pushed $pushedNew new · updated $updatedLocal here / $updatedRemote on Google\n'
-      'Deleted $deletedLocal here / $deletedRemote on Google';
+  String toString() {
+    final base =
+        'Imported $imported task${imported == 1 ? '' : 's'} · '
+        '$importedEvents calendar event${importedEvents == 1 ? '' : 's'}\n'
+        'Pushed $pushedNew new · updated $updatedLocal here / $updatedRemote on Google\n'
+        'Deleted $deletedLocal here / $deletedRemote on Google';
+    if (calendarError == null) return base;
+    return '$base\n\n⚠ Calendar sync failed: $calendarError\n'
+        'Reconnect Google and make sure the Calendar permission is granted.';
+  }
 }
 
 /// §9 two-way Google Tasks sync. Reconciles create / update / complete / delete
@@ -142,10 +153,14 @@ class GoogleSyncOrchestrator {
     }
 
     // --- two-way Google Calendar events reconcile ---
-    // Guarded: if the Calendar API isn't enabled, Tasks sync still succeeds.
+    // Guarded: if the Calendar API isn't enabled (or its scope wasn't granted),
+    // Tasks sync still succeeds — but the failure is *recorded* and shown, not
+    // swallowed, so "my event won't sync" is diagnosable instead of silent.
     try {
       await _syncCalendarEvents(summary);
-    } catch (_) {}
+    } catch (e) {
+      summary.calendarError = e.toString();
+    }
 
     // Re-attach meeting action items to their event. Runs *after* the calendar
     // pass so the parent event exists locally on a freshly-synced device (§4).

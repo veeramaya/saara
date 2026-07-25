@@ -18,6 +18,7 @@ import '../../core/time_context.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../domain/parser/parsed_task.dart';
+import '../../domain/rrule_util.dart';
 import '../../providers.dart';
 import '../../services/contacts_service.dart';
 import '../../services/geofence_service.dart';
@@ -135,8 +136,69 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   TaskKind _kind = TaskKind.task;
   DateTime? _scheduledStart;
   int? _durationMin;
-  String? _rrule;
+  String? _rrule; // the BASE rule (no UNTIL/COUNT); the end is held separately
+  DateTime? _repeatUntil; // the day a series stops, or null for "no end"
   String? _areaId; // selected Area (FK), mapped from the parser's guess
+
+  /// The rule actually saved: the base rule with the chosen end applied. Kept
+  /// apart so the preset chips still match on the base, and so a bounded series
+  /// pushes a real `UNTIL` to Google (which honours it) instead of repeating
+  /// forever.
+  String? get _effectiveRrule {
+    final base = _rrule;
+    if (base == null) return null;
+    if (_repeatUntil == null) return base;
+    // Inclusive of the chosen day — end at the last second of it, local time.
+    final end = DateTime(
+      _repeatUntil!.year,
+      _repeatUntil!.month,
+      _repeatUntil!.day,
+      23,
+      59,
+      59,
+    );
+    return rruleWithUntil(base, end);
+  }
+
+  /// Splits an incoming rule into the base (for the chips) and its end date (for
+  /// the Ends field), so editing a bounded series shows its end instead of
+  /// silently dropping it.
+  void _loadRrule(String? rule) {
+    if (rule == null) {
+      _rrule = null;
+      _repeatUntil = null;
+      return;
+    }
+    final m = RegExp(
+      r'UNTIL=(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z)?',
+      caseSensitive: false,
+    ).firstMatch(rule);
+    if (m != null) {
+      final utc = DateTime.utc(
+        int.parse(m.group(1)!),
+        int.parse(m.group(2)!),
+        int.parse(m.group(3)!),
+        int.parse(m.group(4) ?? '0'),
+        int.parse(m.group(5) ?? '0'),
+        int.parse(m.group(6) ?? '0'),
+      ).toLocal();
+      _repeatUntil = DateTime(utc.year, utc.month, utc.day);
+    } else {
+      _repeatUntil = null;
+    }
+    final base = rule
+        .replaceFirst(RegExp('^RRULE:', caseSensitive: false), '')
+        .split(';')
+        .where(
+          (p) =>
+              p.isNotEmpty &&
+              !p.toUpperCase().startsWith('UNTIL=') &&
+              !p.toUpperCase().startsWith('COUNT='),
+        )
+        .join(';');
+    _rrule = base.isEmpty ? null : base;
+  }
+
   final List<SimpleContact> _participants = [];
   final _locationController = TextEditingController();
   final _meetingLinkController =
@@ -203,7 +265,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     _notesController.text = t.notes ?? '';
     _scheduledStart = t.scheduledStart;
     _durationMin = t.durationMin;
-    _rrule = t.rrule;
+    _loadRrule(t.rrule);
     _areaId = t.areaId;
     _locationController.text = t.locationName ?? '';
     _meetingLinkController.text = t.meetingLink ?? '';
@@ -241,7 +303,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       _notesController.text = text;
       _scheduledStart = draft.scheduledStart;
       _durationMin = draft.durationMin;
-      _rrule = draft.rrule;
+      _loadRrule(draft.rrule);
     });
   }
 
@@ -270,7 +332,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       _titleController.text = draft.title;
       _scheduledStart = draft.scheduledStart;
       _durationMin = draft.durationMin;
-      _rrule = draft.rrule;
+      _loadRrule(draft.rrule);
       _areaId = match?.id;
       _reminderEnabled = draft.meetingLink != null; // §8 suggest for meetings
     });
@@ -592,6 +654,41 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
+                  // When a series repeats, say when it stops — otherwise it runs
+                  // forever, which is ambiguous and clutters a shared calendar.
+                  if (_rrule != null) ...[
+                    const SizedBox(height: 10),
+                    _FieldLabel('Ends', false),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Never'),
+                          selected: _repeatUntil == null,
+                          onSelected: (_) =>
+                              setState(() => _repeatUntil = null),
+                        ),
+                        ChoiceChip(
+                          avatar: Icon(
+                            Icons.event_outlined,
+                            size: 18,
+                            color: _repeatUntil != null
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.onSecondaryContainer
+                                : null,
+                          ),
+                          label: Text(
+                            _repeatUntil == null
+                                ? 'On a date…'
+                                : 'Until ${DateFormat.yMMMd().format(_repeatUntil!)}',
+                          ),
+                          selected: _repeatUntil != null,
+                          onSelected: (_) => _pickRepeatUntil(),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 12),
 
                   _FieldLabel('Area', uncertain.contains('area')),
@@ -1088,6 +1185,22 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     _checkConflicts();
   }
 
+  /// Pick the day a repeating series should stop. The first allowed date is the
+  /// series' own start — a series can't end before it begins.
+  Future<void> _pickRepeatUntil() async {
+    final now = DateTime.now();
+    final start = _scheduledStart ?? now;
+    final date = await showDatePicker(
+      context: context,
+      helpText: 'Repeat until',
+      initialDate: _repeatUntil ?? start.add(const Duration(days: 30)),
+      firstDate: start,
+      lastDate: now.add(const Duration(days: 365 * 10)),
+    );
+    if (date == null || !mounted) return;
+    setState(() => _repeatUntil = DateTime(date.year, date.month, date.day));
+  }
+
   static String _durationLabel(int m) {
     if (m < 60) return '${m}m';
     final h = m ~/ 60, r = m % 60;
@@ -1395,7 +1508,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         scheduledStart: Value(anchor),
         dueDate: Value(anchor),
         durationMin: Value(_durationMin),
-        rrule: Value(_rrule),
+        rrule: Value(_effectiveRrule),
         reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
         meetingLink: Value(
           _meetingLinkController.text.trim().isEmpty
@@ -1610,7 +1723,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       scheduledStart: Value(anchor),
       dueDate: Value(anchor),
       durationMin: Value(_durationMin),
-      rrule: Value(_rrule),
+      rrule: Value(_effectiveRrule),
       reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
       meetingLink: Value(
         _meetingLinkController.text.trim().isEmpty
