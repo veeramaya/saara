@@ -36,10 +36,35 @@ class LedgerFolderSync {
 
   /// Turn folder sync on: remember the folder and stash the passphrase. A first
   /// pass runs immediately so the other device sees this one straight away.
+  ///
+  /// The folder is **checked for writability first** — on Android a folder
+  /// picked from a cloud provider (Google Drive, etc.) resolves to a read-only
+  /// path, and saving it would then fail on every app open. Refuse up front with
+  /// a clear message instead of persisting a folder that can never work.
   Future<FolderSyncResult> enable(String folderPath, String passphrase) async {
+    final dir = Directory(folderPath);
+    await _assertWritable(dir);
     await settings.setLedgerFolder(folderPath);
     await _storage.write(key: _passKey, value: passphrase);
-    return sync.syncWatchedFolder(Directory(folderPath), passphrase);
+    return sync.syncWatchedFolder(dir, passphrase);
+  }
+
+  Future<void> _assertWritable(Directory dir) async {
+    try {
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final probe = File(
+        '${dir.path}${Platform.pathSeparator}.saara-write-test',
+      );
+      await probe.writeAsString('ok', flush: true);
+      await probe.delete();
+    } catch (_) {
+      throw const LedgerFolderException(
+        "Saara can't write to that folder on this device. Automatic sync needs "
+        'a normal local folder — cloud folders like Google Drive are read-only '
+        'to apps here. On a phone use Export / Import instead; on desktop pick a '
+        'folder such as your OneDrive or Google Drive Desktop folder.',
+      );
+    }
   }
 
   /// Stop syncing. Forgets the folder and wipes the stored passphrase; the files
@@ -57,6 +82,25 @@ class LedgerFolderSync {
     if (folder == null || folder.isEmpty || pass == null || pass.isEmpty) {
       return null;
     }
-    return sync.syncWatchedFolder(Directory(folder), pass);
+    try {
+      return await sync.syncWatchedFolder(Directory(folder), pass);
+    } on FileSystemException {
+      // A configured folder that turned read-only (typically a cloud folder on
+      // Android) — surface it plainly rather than a raw OS error.
+      throw const LedgerFolderException(
+        "Saara can't read/write the sync folder on this device. It looks like a "
+        'cloud folder, which is read-only to apps here. Turn off automatic sync '
+        'and use Export / Import, or point it at a normal local folder.',
+      );
+    }
   }
+}
+
+/// A folder-sync problem stated in plain language (its message is what the UI
+/// shows), so a read-only cloud folder doesn't surface as a raw OS error.
+class LedgerFolderException implements Exception {
+  const LedgerFolderException(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }
