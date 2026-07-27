@@ -227,14 +227,23 @@ class _JourneyPainter extends CustomPainter {
     final rings = [r3 * 0.29, r3 * 0.53, r3 * 0.76, r3];
     double font(double base) => math.max(8.5, base * k);
 
-    // progress: intro climb to the live value then rest; demo loop when null.
-    double p;
-    if (target == null) {
-      final tl = time % 12.0;
-      p = _easeOut((tl / 6.0).clamp(0, 1));
+    // The journey loops: climb to the live standing, hold a beat, then fade and
+    // re-tell — so the header is always alive, not frozen after one play. The
+    // fade (not a retreat) means the rings never look like they're *un*-filling.
+    final effTarget = target ?? 0.9;
+    const period = 8.0;
+    final cyc = time % period;
+    double f, sceneA = 1;
+    if (cyc < 4.0) {
+      f = _easeOut(cyc / 4.0); // climb
+    } else if (cyc < 6.5) {
+      f = 1; // hold at the standing
     } else {
-      p = (target! * _easeOut((time / 2.6).clamp(0, 1))).clamp(0, 1);
+      f = 1;
+      sceneA = 1 - (cyc - 6.5) / 1.5; // fade out at the standing
     }
+    if (cyc < 0.8) sceneA = cyc / 0.8; // fade the fresh journey back in
+    final p = (effTarget * f).clamp(0.0, 1.0);
 
     final whole = p >= 0.999;
     final int ringIndex;
@@ -249,6 +258,12 @@ class _JourneyPainter extends CustomPainter {
     final overall = p;
     final th = _top + local * _tau;
     final centre = Offset(cx, cy);
+
+    // Group the whole scene under one opacity so the loop can fade in/out.
+    canvas.saveLayer(
+      Offset.zero & size,
+      Paint()..color = Color.fromRGBO(0, 0, 0, sceneA.clamp(0, 1)),
+    );
 
     // rings: faint base + brand fill for the cleared portion + label
     for (var i = 0; i < 4; i++) {
@@ -358,6 +373,8 @@ class _JourneyPainter extends CustomPainter {
         FontWeight.w600,
       );
     }
+
+    canvas.restore(); // close the opacity group
   }
 
   @override
