@@ -110,7 +110,9 @@ class _RootShellState extends ConsumerState<_RootShell>
   /// and refreshes the views a merge touched). Cheap no-op when folder sync is
   /// off.
   void _pokeLedger() {
-    if (mounted) ref.invalidate(ledgerAutoSyncProvider);
+    if (!mounted) return;
+    ref.invalidate(ledgerAutoSyncProvider);
+    ref.invalidate(driveAutoSyncProvider);
   }
 
   /// First-run coach flow (§20.2) — shown once until dismissed; re-openable

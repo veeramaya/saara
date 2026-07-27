@@ -74,6 +74,21 @@ class AppSettings {
   Future<bool> autoSyncEnabled() async => (await _read(_autoSync)) == 'on';
   Future<void> setAutoSync(bool on) => _write(_autoSync, on ? 'on' : 'off');
 
+  static const _driveSync = 'drive_sync_enabled';
+
+  /// §9 whether device-to-device sync goes through Google Drive's hidden
+  /// app-data folder (drive.appdata). Off by default; the folder route stays.
+  Future<bool> driveSyncEnabled() async => (await _read(_driveSync)) == 'on';
+  Future<void> setDriveSyncEnabled(bool on) async {
+    if (on) {
+      await _write(_driveSync, 'on');
+    } else {
+      await (db.delete(
+        db.settings,
+      )..where((s) => s.key.equals(_driveSync))).go();
+    }
+  }
+
   /// §7.6 how long to keep photos/video/audio *after a task is completed*.
   /// null = keep forever (the default — never delete a user's media unasked).
   /// The raw image behind an AI extraction has already done its job once the

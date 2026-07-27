@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../domain/enums.dart';
 import '../../providers.dart';
+import '../../services/ledger_sync_service.dart' show FolderSyncResult;
 import '../../services/ocr_service.dart';
 import '../capture/review_items_screen.dart';
 import '../command/command_screen.dart';
@@ -57,7 +58,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // §9 Phase 3 — pull in the other device's ledger on open. When a pass
     // actually merges something, refresh the views it touched.
-    ref.listen(ledgerAutoSyncProvider, (_, next) {
+    void refreshOnMerge(AsyncValue<FolderSyncResult?> next) {
       next.whenData((result) {
         if (result != null && !result.merged.isEmpty) {
           ref.invalidate(allTasksProvider);
@@ -66,10 +67,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ref.invalidate(unscheduledTasksProvider);
           ref.invalidate(areaScoresProvider);
           ref.invalidate(overallEffectivenessProvider);
+          ref.invalidate(ledgerSyncStatusProvider);
         }
       });
-    });
+    }
+
+    ref.listen(ledgerAutoSyncProvider, (_, next) => refreshOnMerge(next));
+    ref.listen(driveAutoSyncProvider, (_, next) => refreshOnMerge(next));
     ref.watch(ledgerAutoSyncProvider);
+    ref.watch(driveAutoSyncProvider);
 
     return Scaffold(
       appBar: AppBar(

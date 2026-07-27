@@ -13,6 +13,7 @@ import 'package:pointycastle/digests/sha256.dart';
 import '../data/database.dart';
 import '../domain/enums.dart';
 import 'app_settings.dart';
+import 'google/google_sync_service.dart';
 
 /// §9 device-to-device sync through a **ledger file** — never through Google
 /// (`docs/LEDGER_DESIGN.md`). Google carries interop with the outside world;
@@ -210,6 +211,71 @@ class LedgerSyncService {
         result.merged.add(merged);
         result.peersRead++;
         // importBundle records the import timestamp (used by the gate above).
+      } catch (_) {
+        result.peersSkipped++;
+      }
+    }
+    return result;
+  }
+
+  /// The same pass as [syncWatchedFolder], but over Google Drive's hidden
+  /// app-data folder instead of a local folder (§9). One file per device
+  /// (`saara-ledger-<id>.saara`); write ours only when the data changed; import
+  /// each peer whose export is newer than the last we pulled. Everything else —
+  /// encryption, the signature gate, the timestamp gate — is shared.
+  Future<FolderSyncResult> syncDrive(
+    GoogleSyncService google,
+    String passphrase,
+  ) async {
+    final settings = AppSettings(db);
+    final deviceId = await db.deviceId();
+    final ownName = ownFileName(deviceId);
+    final files = await google.listAppData();
+    final result = FolderSyncResult();
+
+    // Write ours only if the data changed since last time.
+    final bundle = await exportBundle();
+    final sig = _dataSignature(bundle);
+    if (await settings.ledgerExportSig() != sig) {
+      final plain = const JsonEncoder.withIndent('  ').convert(bundle);
+      String? existingId;
+      for (final f in files) {
+        if (f.name == ownName) {
+          existingId = f.id;
+          break;
+        }
+      }
+      await google.uploadAppData(
+        ownName,
+        _encryptArmored(plain, passphrase),
+        existingId: existingId,
+      );
+      await settings.setLedgerExportSig(sig);
+      await settings.setLedgerExportAt(DateTime.now());
+      result.exported = true;
+    }
+
+    // Import every *other* device's file, timestamp-gated.
+    for (final f in files) {
+      if (!f.name.endsWith('.saara') || f.name == ownName) continue;
+      try {
+        final peer = decryptBundle(
+          await google.downloadAppData(f.id),
+          passphrase,
+        );
+        final peerId = peer['deviceId']?.toString();
+        final exportedAt = DateTime.tryParse(
+          peer['exportedAt']?.toString() ?? '',
+        );
+        if (peerId != null && exportedAt != null) {
+          final last = await settings.lastImportedExportOf(peerId);
+          if (last != null && !exportedAt.isAfter(last)) {
+            result.peersUpToDate++;
+            continue;
+          }
+        }
+        result.merged.add(await importBundle(peer));
+        result.peersRead++;
       } catch (_) {
         result.peersSkipped++;
       }
