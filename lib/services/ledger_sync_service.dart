@@ -172,12 +172,14 @@ class LedgerSyncService {
 
     final result = FolderSyncResult();
 
-    // Write our file **only when our data actually changed** since the last
-    // write — so an idle heartbeat doesn't re-upload to the cloud folder, and an
-    // idempotent merge doesn't echo a fresh export back at the peer.
+    // Write our file when the data changed OR our file is missing here — the
+    // latter matters because the change-signature is shared across transports,
+    // so switching from Drive to folder (or vice versa) must still lay down a
+    // first file even though "nothing changed". Otherwise the peer has nothing
+    // to import and areas/history never cross.
     final bundle = await exportBundle();
     final sig = _dataSignature(bundle);
-    if (await settings.ledgerExportSig() != sig) {
+    if (!await own.exists() || await settings.ledgerExportSig() != sig) {
       final plain = const JsonEncoder.withIndent('  ').convert(bundle);
       await own.writeAsString(_encryptArmored(plain, passphrase));
       await settings.setLedgerExportSig(sig);
@@ -233,18 +235,22 @@ class LedgerSyncService {
     final files = await google.listAppData();
     final result = FolderSyncResult();
 
-    // Write ours only if the data changed since last time.
+    // Does our file already exist in the app-data folder?
+    String? existingId;
+    for (final f in files) {
+      if (f.name == ownName) {
+        existingId = f.id;
+        break;
+      }
+    }
+    // Write when the data changed OR our file isn't in Drive yet — the signature
+    // is shared with the folder route, so a first Drive upload must happen even
+    // if "nothing changed" since the last folder export (else the peer has
+    // nothing to pull and areas never cross).
     final bundle = await exportBundle();
     final sig = _dataSignature(bundle);
-    if (await settings.ledgerExportSig() != sig) {
+    if (existingId == null || await settings.ledgerExportSig() != sig) {
       final plain = const JsonEncoder.withIndent('  ').convert(bundle);
-      String? existingId;
-      for (final f in files) {
-        if (f.name == ownName) {
-          existingId = f.id;
-          break;
-        }
-      }
       await google.uploadAppData(
         ownName,
         _encryptArmored(plain, passphrase),

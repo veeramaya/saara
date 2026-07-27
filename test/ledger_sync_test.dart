@@ -601,6 +601,32 @@ void main() {
     });
 
     test(
+      're-writes our file if it goes missing though data is unchanged',
+      () async {
+        // Cross-transport trap: the change-signature is set (e.g. from a prior
+        // Drive/manual export) but our file isn't in this folder — a
+        // signature-only gate would never lay one down, so the peer gets nothing.
+        await addTask(deviceA, 'a1');
+        await syncA.syncWatchedFolder(
+          folder,
+          'pw',
+        ); // writes + stores signature
+        final own = File(
+          '${folder.path}/saara-ledger-${await deviceA.deviceId()}.saara',
+        );
+        await own.delete(); // file gone, signature still stored
+
+        final r = await syncA.syncWatchedFolder(folder, 'pw');
+        expect(
+          r.exported,
+          isTrue,
+          reason: 'a missing own file must be rewritten',
+        );
+        expect(await own.exists(), isTrue);
+      },
+    );
+
+    test(
       'a peer whose export is unchanged is skipped, not re-merged',
       () async {
         await addTask(deviceA, 'a1');
