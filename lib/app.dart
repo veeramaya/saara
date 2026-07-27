@@ -87,6 +87,8 @@ class _RootShellState extends ConsumerState<_RootShell>
     final db = ref.read(appDatabaseProvider);
     _ledgerWatch = db.tableUpdates().listen((updates) {
       if (updates.every((u) => u.table == 'settings')) return;
+      // Flip the sync-status chip to "unsynced" promptly after any edit.
+      ref.invalidate(syncFreshnessProvider);
       _ledgerDebounce?.cancel();
       _ledgerDebounce = Timer(const Duration(seconds: 8), _pokeLedger);
     });
@@ -216,6 +218,7 @@ class _RootShellState extends ConsumerState<_RootShell>
     ref.invalidate(overallEffectivenessProvider);
     ref.invalidate(ledgerSyncStatusProvider);
     ref.invalidate(unclassifiedTasksProvider);
+    ref.invalidate(syncFreshnessProvider);
   }
 
   /// Re-run the watched-folder pass by invalidating its provider (home listens

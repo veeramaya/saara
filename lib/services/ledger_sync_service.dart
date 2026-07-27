@@ -140,6 +140,25 @@ class LedgerSyncService {
     return sha256.convert(utf8.encode(json.encode(data))).toString();
   }
 
+  /// §9 True when the DB holds edits this device hasn't synced to the other one
+  /// yet — the current data signature differs from the last one we synced. This
+  /// is what turns the status chip amber, and why an un-synced device's scores
+  /// should be read as provisional. Null last-sync counts as unsynced.
+  Future<bool> hasUnsyncedChanges() async {
+    final last = await AppSettings(db).ledgerExportSig();
+    if (last == null) return true;
+    return _dataSignature(await exportBundle()) != last;
+  }
+
+  /// Record that this device is now in step with the other one — the current
+  /// data has been sent to (or reconciled with) it. Every successful sync path
+  /// calls this; afterwards [hasUnsyncedChanges] is false until the next edit.
+  Future<void> markSynced() async {
+    final settings = AppSettings(db);
+    await settings.setLedgerExportSig(_dataSignature(await exportBundle()));
+    await settings.setLedgerExportAt(DateTime.now());
+  }
+
   /// Import an encrypted bundle. Throws a clear error on the wrong passphrase or
   /// a corrupt file rather than merging garbage.
   // ---- watched folder (§9 Phase 3) ----------------------------------------

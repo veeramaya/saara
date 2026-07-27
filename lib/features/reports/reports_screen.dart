@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/reliability.dart';
 import '../../domain/report.dart';
+import '../sync/sync_status_chip.dart';
 import '../../providers.dart';
 import '../common/top_menu.dart';
 import '../listeners/listeners_screen.dart' show listenerGapSuggestion;
@@ -20,6 +21,7 @@ class ReportsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Performance'),
         actions: [
+          const SyncStatusChip(),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(reportSummaryProvider),

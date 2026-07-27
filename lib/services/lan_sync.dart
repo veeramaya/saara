@@ -108,6 +108,8 @@ class LanSyncServer {
         ..headers.contentType = ContentType.text
         ..write(mine);
       await req.response.close();
+      await _sync
+          .markSynced(); // both sides converged — clear the "unsynced" flag
       onSynced?.call(merged, peerName);
     } catch (_) {
       try {
@@ -155,6 +157,8 @@ class LanSyncClient {
       }
       final body = await utf8.decoder.bind(resp).join();
       final merged = await _sync.importEncrypted(body, pairing.token);
+      await _sync
+          .markSynced(); // both sides converged — clear the "unsynced" flag
       return (
         merged: merged,
         peerName: resp.headers.value('x-saara-device') ?? pairing.name,

@@ -328,6 +328,20 @@ final ledgerSyncStatusProvider = FutureProvider((ref) async {
   );
 });
 
+/// §9 sync freshness for the status chip on every main screen: are there local
+/// edits not yet synced to the other device, and when did we last sync. Turns
+/// amber the moment something is edited/saved; back to "in sync" after a sync.
+/// Invalidated on data changes by the app shell.
+final syncFreshnessProvider =
+    FutureProvider<({bool unsynced, DateTime? lastSync})>((ref) async {
+      final sync = ref.watch(ledgerSyncServiceProvider);
+      final settings = ref.watch(appSettingsProvider);
+      return (
+        unsynced: await sync.hasUnsyncedChanges(),
+        lastSync: await settings.ledgerExportAt(),
+      );
+    });
+
 /// taskId → where it came from: "Google", or the device that created it
 /// ("Desktop"/"Mobile"), else "Saara". Powers the Source filter (§9). Google
 /// wins — a task pulled from Google is Google's regardless of any ledger echo.

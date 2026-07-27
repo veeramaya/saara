@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
 import '../../services/ledger_sync_service.dart' show FolderSyncResult;
+import '../sync/sync_status_chip.dart';
 import '../../services/ocr_service.dart';
 import '../capture/review_items_screen.dart';
 import '../command/command_screen.dart';
@@ -83,6 +84,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               : 'Calendar',
         ),
         actions: [
+          const SyncStatusChip(),
           IconButton(
             icon: const Icon(Icons.wb_sunny_outlined),
             tooltip: 'Open your day',

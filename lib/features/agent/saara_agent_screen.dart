@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../core/time_context.dart';
 import '../common/top_menu.dart';
+import '../sync/sync_status_chip.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
@@ -144,6 +145,7 @@ class _SaaraAgentScreenState extends ConsumerState<SaaraAgentScreen> {
       appBar: AppBar(
         title: const Text('Saara'),
         actions: [
+          const SyncStatusChip(),
           IconButton(
             icon: const Icon(Icons.tune),
             tooltip: 'AI settings',

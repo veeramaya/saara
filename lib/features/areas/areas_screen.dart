@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database.dart';
 import '../../providers.dart';
+import '../sync/sync_status_chip.dart';
 import 'add_area_screen.dart';
 import 'area_detail_screen.dart';
 import 'area_icons.dart';
@@ -25,7 +26,7 @@ class AreasScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Areas'),
-        actions: const [SaaraTopMenu()],
+        actions: const [SyncStatusChip(), SaaraTopMenu()],
       ),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),

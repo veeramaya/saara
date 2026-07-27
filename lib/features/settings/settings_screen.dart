@@ -287,67 +287,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _ledgerSyncSheet() async {
     final choice = await showModalBottomSheet<String>(
       context: context,
+      // The sheet has grown past half-height (Wi-Fi + folder + export/import),
+      // so let it expand and scroll rather than clip the lower tiles.
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text(
-                'Your record — tasks, history and areas — moves as a file. '
-                'It never goes through Google. Export on one device, import on '
-                'the other; do it either way, as often as you like.',
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Text(
+                  'Your record — tasks, history and areas — moves as a file. '
+                  'It never goes through Google. Export on one device, import on '
+                  'the other; do it either way, as often as you like.',
+                ),
               ),
-            ),
-            const _LedgerSyncStatus(),
-            ListTile(
-              leading: const Icon(Icons.wifi),
-              title: const Text('Sync over Wi-Fi'),
-              subtitle: const Text(
-                'Both on the same Wi-Fi — one shows a code, the other scans it',
+              const _LedgerSyncStatus(),
+              ListTile(
+                leading: const Icon(Icons.wifi),
+                title: const Text('Sync over Wi-Fi'),
+                subtitle: const Text(
+                  'Both on the same Wi-Fi — one shows a code, the other scans it',
+                ),
+                onTap: () => Navigator.pop(ctx, 'wifi'),
               ),
-              onTap: () => Navigator.pop(ctx, 'wifi'),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.upload_file_outlined),
-              title: const Text('Export a ledger file'),
-              subtitle: const Text('Share it to your other device'),
-              onTap: () => Navigator.pop(ctx, 'export'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.download_outlined),
-              title: const Text('Import a ledger file'),
-              subtitle: const Text(
-                'Merge another device\'s record into this one',
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.upload_file_outlined),
+                title: const Text('Export a ledger file'),
+                subtitle: const Text('Share it to your other device'),
+                onTap: () => Navigator.pop(ctx, 'export'),
               ),
-              onTap: () => Navigator.pop(ctx, 'import'),
-            ),
-            const Divider(),
-            FutureBuilder<bool>(
-              future: ref.read(ledgerFolderSyncProvider).isConfigured,
-              builder: (context, snap) {
-                final on = snap.data ?? false;
-                return ListTile(
-                  leading: Icon(
-                    on ? Icons.folder_shared : Icons.folder_open_outlined,
-                  ),
-                  title: Text(
-                    on ? 'Automatic folder sync — on' : 'Set up automatic sync',
-                  ),
-                  subtitle: Text(
-                    on
-                        ? 'Saara syncs through your folder on open. Tap to '
-                              'change or turn off.'
-                        : 'Pick a folder both devices can see (a synced drive, '
-                              'OneDrive…) and Saara keeps them in step',
-                  ),
-                  onTap: () =>
-                      Navigator.pop(ctx, on ? 'folder-manage' : 'folder-on'),
-                );
-              },
-            ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('Import a ledger file'),
+                subtitle: const Text(
+                  'Merge another device\'s record into this one',
+                ),
+                onTap: () => Navigator.pop(ctx, 'import'),
+              ),
+              const Divider(),
+              FutureBuilder<bool>(
+                future: ref.read(ledgerFolderSyncProvider).isConfigured,
+                builder: (context, snap) {
+                  final on = snap.data ?? false;
+                  return ListTile(
+                    leading: Icon(
+                      on ? Icons.folder_shared : Icons.folder_open_outlined,
+                    ),
+                    title: Text(
+                      on
+                          ? 'Automatic folder sync — on'
+                          : 'Set up automatic sync',
+                    ),
+                    subtitle: Text(
+                      on
+                          ? 'Saara syncs through your folder on open. Tap to '
+                                'change or turn off.'
+                          : 'Pick a folder both devices can see (a synced drive, '
+                                'OneDrive…) and Saara keeps them in step',
+                    ),
+                    onTap: () =>
+                        Navigator.pop(ctx, on ? 'folder-manage' : 'folder-on'),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -621,8 +628,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final content = passphrase == null
           ? await sync.exportJson()
           : await sync.exportEncrypted(passphrase);
-      await ref.read(appSettingsProvider).setLedgerExportAt(DateTime.now());
+      // We've sent our full current state out — treat this device as in step.
+      await sync.markSynced();
       ref.invalidate(ledgerSyncStatusProvider);
+      ref.invalidate(syncFreshnessProvider);
       final stamp = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
       final name = 'saara-ledger-$stamp.saara';
 

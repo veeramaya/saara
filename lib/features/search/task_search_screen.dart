@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
 import '../../domain/enums.dart';
+import '../sync/sync_status_chip.dart';
 import '../../providers.dart';
 import '../common/top_menu.dart';
 import '../home/home_screen.dart' show AddTaskFab;
@@ -266,6 +267,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
       appBar: AppBar(
         title: const Text('All tasks'),
         actions: [
+          const SyncStatusChip(),
           IconButton(
             icon: const Icon(Icons.help_outline),
             tooltip: 'Search tips',

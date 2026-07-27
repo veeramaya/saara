@@ -126,6 +126,7 @@ class _LanSyncScreenState extends ConsumerState<LanSyncScreen> {
     ref.invalidate(overallEffectivenessProvider);
     ref.invalidate(ledgerSyncStatusProvider);
     ref.invalidate(unclassifiedTasksProvider);
+    ref.invalidate(syncFreshnessProvider);
   }
 
   String _friendly(Object e) {
