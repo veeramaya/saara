@@ -314,6 +314,20 @@ final unscheduledTasksProvider = FutureProvider<List<Task>>(
   (ref) => ref.watch(taskDaoProvider).unscheduledTasks(),
 );
 
+/// §9 the sync status the user sees: when Google last synced, when this device
+/// last exported its ledger, and — per other device — the export we last pulled
+/// and when. Lets the UI say plainly whether the devices are in step.
+final ledgerSyncStatusProvider = FutureProvider((ref) async {
+  final s = ref.watch(appSettingsProvider);
+  return (
+    google: await s.lastSyncAt(),
+    export: await s.ledgerExportAt(),
+    imports: await s.ledgerImports(),
+    labels: await s.knownDevices(),
+    myDeviceId: await ref.watch(appDatabaseProvider).deviceId(),
+  );
+});
+
 /// taskId → where it came from: "Google", or the device that created it
 /// ("Desktop"/"Mobile"), else "Saara". Powers the Source filter (§9). Google
 /// wins — a task pulled from Google is Google's regardless of any ledger echo.

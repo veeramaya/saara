@@ -110,6 +110,76 @@ class AppSettings {
   Future<void> setLastSync(DateTime t) =>
       _write(_lastSync, t.toIso8601String());
 
+  // ---- ledger sync timestamps (§9) -----------------------------------------
+  // So the user can see exactly where each device stands: when this device last
+  // exported its record, and — per other device — the export we last pulled in
+  // and when. Together they answer "are my devices in sync?".
+
+  static const _ledgerExportAt = 'ledger_export_at';
+  static const _ledgerExportSig = 'ledger_export_sig';
+  static const _ledgerImports =
+      'ledger_imports'; // deviceId → {exportedAt, importedAt}
+
+  Future<DateTime?> ledgerExportAt() async {
+    final v = await _read(_ledgerExportAt);
+    return v == null ? null : DateTime.tryParse(v);
+  }
+
+  Future<void> setLedgerExportAt(DateTime t) =>
+      _write(_ledgerExportAt, t.toIso8601String());
+
+  /// A hash of the *data* we last wrote out — so a pass re-writes (and re-uploads
+  /// to the cloud folder) only when something actually changed, never on an idle
+  /// heartbeat, and never in an echo after an idempotent merge.
+  Future<String?> ledgerExportSig() => _read(_ledgerExportSig);
+  Future<void> setLedgerExportSig(String sig) => _write(_ledgerExportSig, sig);
+
+  /// deviceId → (the peer's `exportedAt` we last merged, when we merged it).
+  Future<Map<String, ({DateTime exportedAt, DateTime importedAt})>>
+  ledgerImports() async {
+    final raw = await _read(_ledgerImports);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final m = json.decode(raw) as Map<String, dynamic>;
+      final out = <String, ({DateTime exportedAt, DateTime importedAt})>{};
+      m.forEach((k, v) {
+        final e = DateTime.tryParse((v as Map)['exportedAt'].toString());
+        final i = DateTime.tryParse(v['importedAt'].toString());
+        if (e != null && i != null) {
+          out[k] = (exportedAt: e, importedAt: i);
+        }
+      });
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// The `exportedAt` of the last file we merged from [deviceId] — so a pass can
+  /// skip a peer file that hasn't changed since.
+  Future<DateTime?> lastImportedExportOf(String deviceId) async =>
+      (await ledgerImports())[deviceId]?.exportedAt;
+
+  Future<void> recordLedgerImport(
+    String deviceId,
+    DateTime exportedAt,
+    DateTime importedAt,
+  ) async {
+    final all = await ledgerImports();
+    final next = {
+      for (final e in all.entries)
+        e.key: {
+          'exportedAt': e.value.exportedAt.toIso8601String(),
+          'importedAt': e.value.importedAt.toIso8601String(),
+        },
+      deviceId: {
+        'exportedAt': exportedAt.toIso8601String(),
+        'importedAt': importedAt.toIso8601String(),
+      },
+    };
+    await _write(_ledgerImports, json.encode(next));
+  }
+
   Future<bool> coachSeen() async => (await _read(_coachSeen)) == 'yes';
   Future<void> setCoachSeen() => _write(_coachSeen, 'yes');
 

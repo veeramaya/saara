@@ -578,6 +578,45 @@ void main() {
       expect(files.every((n) => n.endsWith('.saara')), isTrue);
     });
 
+    test('an idle pass does not re-write our file (no cloud churn)', () async {
+      await addTask(deviceA, 'a1');
+      await syncA.syncWatchedFolder(folder, 'pw'); // first write
+      final own = File(
+        '${folder.path}/saara-ledger-${await deviceA.deviceId()}.saara',
+      );
+      final firstBytes = await own.readAsString();
+
+      final r = await syncA.syncWatchedFolder(folder, 'pw'); // nothing changed
+      expect(r.exported, isFalse, reason: 'unchanged data must not re-write');
+      expect(
+        await own.readAsString(),
+        firstBytes,
+        reason: 'the file (and its cloud upload) is left untouched',
+      );
+
+      // A real change re-writes it.
+      await addTask(deviceA, 'a2');
+      final r2 = await syncA.syncWatchedFolder(folder, 'pw');
+      expect(r2.exported, isTrue);
+    });
+
+    test(
+      'a peer whose export is unchanged is skipped, not re-merged',
+      () async {
+        await addTask(deviceA, 'a1');
+        await syncA.syncWatchedFolder(folder, 'pw'); // A writes
+        await syncB.syncWatchedFolder(folder, 'pw'); // B imports A
+
+        final r = await syncB.syncWatchedFolder(folder, 'pw'); // A unchanged
+        expect(
+          r.peersUpToDate,
+          1,
+          reason: 'A had not changed since last import',
+        );
+        expect(r.merged.isEmpty, isTrue, reason: 'no wasted merge');
+      },
+    );
+
     test('a pass writes ours, then merges every peer', () async {
       await addArea(deviceA, 'health');
       await addTask(deviceA, 'a1', title: 'from A', areaId: 'health');

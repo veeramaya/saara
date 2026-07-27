@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:pointycastle/key_derivators/api.dart';
@@ -55,6 +56,9 @@ class LedgerSyncService {
       'bundleFormat': bundleFormat,
       'schemaVersion': db.schemaVersion,
       'deviceId': deviceId,
+      // When this snapshot was taken — a peer imports only when this is newer
+      // than the last export it pulled from us (§9 timestamp-driven sync).
+      'exportedAt': DateTime.now().toIso8601String(),
       'devices': await settings.knownDevices(),
       'tasks': [for (final t in tasks) t.toJson()],
       'ledger': [for (final e in entries) e.toJson()],
@@ -93,18 +97,47 @@ class LedgerSyncService {
   /// Export, encrypted with [passphrase]. The salt and IV travel in the clear at
   /// the head of the file (they must, to decrypt) — they are not secrets; the
   /// passphrase is.
-  Future<String> exportEncrypted(String passphrase) async {
+  Future<String> exportEncrypted(String passphrase) async =>
+      _encryptArmored(await exportJson(), passphrase);
+
+  /// Encrypt [plain] into the armored `{magic,salt,iv,body}` envelope.
+  String _encryptArmored(String plain, String passphrase) {
     final salt = _random(16);
     final iv = _random(16);
     final key = _deriveKey(passphrase, salt);
     final cipher = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
-    final body = cipher.encrypt(await exportJson(), iv: enc.IV(iv));
+    final body = cipher.encrypt(plain, iv: enc.IV(iv));
     return json.encode({
       'magic': _magic,
       'salt': base64.encode(salt),
       'iv': base64.encode(iv),
       'body': body.base64,
     });
+  }
+
+  /// A stable hash of the *data* in [bundle] — ignoring the varying header
+  /// (exportedAt, salt/iv, device list) and sorting rows by id — so identical
+  /// data always hashes the same, even after an idempotent merge re-writes rows.
+  String _dataSignature(Map<String, dynamic> bundle) {
+    List<dynamic> sorted(String key) {
+      final list = List<Map<String, dynamic>>.from(
+        (bundle[key] as List? ?? const []).cast<Map<String, dynamic>>(),
+      );
+      list.sort(
+        (a, b) =>
+            (a['id']?.toString() ?? '').compareTo(b['id']?.toString() ?? ''),
+      );
+      return list;
+    }
+
+    final data = {
+      'tasks': sorted('tasks'),
+      'ledger': sorted('ledger'),
+      'areas': sorted('areas'),
+      'results': sorted('results'),
+      'participants': sorted('participants'),
+    };
+    return sha256.convert(utf8.encode(json.encode(data))).toString();
   }
 
   /// Import an encrypted bundle. Throws a clear error on the wrong passphrase or
@@ -131,14 +164,25 @@ class LedgerSyncService {
     if (!await dir.exists()) {
       throw FileSystemException('Sync folder not found', dir.path);
     }
+    final settings = AppSettings(db);
     final deviceId = await db.deviceId();
     final ownName = ownFileName(deviceId);
     final own = File('${dir.path}/$ownName');
 
-    // Write our own file first, so the other device sees our latest.
-    await own.writeAsString(await exportEncrypted(passphrase));
-
     final result = FolderSyncResult();
+
+    // Write our file **only when our data actually changed** since the last
+    // write — so an idle heartbeat doesn't re-upload to the cloud folder, and an
+    // idempotent merge doesn't echo a fresh export back at the peer.
+    final bundle = await exportBundle();
+    final sig = _dataSignature(bundle);
+    if (await settings.ledgerExportSig() != sig) {
+      final plain = const JsonEncoder.withIndent('  ').convert(bundle);
+      await own.writeAsString(_encryptArmored(plain, passphrase));
+      await settings.setLedgerExportSig(sig);
+      await settings.setLedgerExportAt(DateTime.now());
+      result.exported = true;
+    }
     for (final entity in dir.listSync()) {
       if (entity is! File) continue;
       final name = entity.uri.pathSegments.last;
@@ -148,12 +192,24 @@ class LedgerSyncService {
       // its own file back in.
       if (name == ownName) continue;
       try {
-        final merged = await importEncrypted(
-          await entity.readAsString(),
-          passphrase,
+        final bundle = decryptBundle(await entity.readAsString(), passphrase);
+        final peerId = bundle['deviceId']?.toString();
+        final exportedAt = DateTime.tryParse(
+          bundle['exportedAt']?.toString() ?? '',
         );
+        // Timestamp gate: skip a peer whose export hasn't changed since we last
+        // pulled it — no wasted merge, and it's how "in sync" is detected.
+        if (peerId != null && exportedAt != null) {
+          final last = await settings.lastImportedExportOf(peerId);
+          if (last != null && !exportedAt.isAfter(last)) {
+            result.peersUpToDate++;
+            continue;
+          }
+        }
+        final merged = await importBundle(bundle);
         result.merged.add(merged);
         result.peersRead++;
+        // importBundle records the import timestamp (used by the gate above).
       } catch (_) {
         result.peersSkipped++;
       }
@@ -164,7 +220,12 @@ class LedgerSyncService {
   Future<MergeSummary> importEncrypted(
     String armored,
     String passphrase,
-  ) async {
+  ) async => importBundle(decryptBundle(armored, passphrase));
+
+  /// Decrypt an armored file to its bundle map — without merging. Lets a
+  /// watched-folder pass read the header (deviceId, exportedAt) and decide
+  /// whether the peer changed before doing the work.
+  Map<String, dynamic> decryptBundle(String armored, String passphrase) {
     Map<String, dynamic> outer;
     try {
       outer = json.decode(armored) as Map<String, dynamic>;
@@ -187,7 +248,7 @@ class LedgerSyncService {
     } catch (_) {
       throw const FormatException('Wrong passphrase, or the file is damaged.');
     }
-    return importJson(plain);
+    return json.decode(plain) as Map<String, dynamic>;
   }
 
   /// Merge a bundle from another device into this one. Idempotent.
@@ -300,6 +361,19 @@ class LedgerSyncService {
       // bumps updatedAt but writes no correction — can never overwrite a filing.
       await _applyLedgerAreas();
     });
+
+    // Record when we pulled this peer's export, for the status panel and for the
+    // watched-folder gate (skip a peer that hasn't changed since). Covers both
+    // the manual import and the folder pass.
+    final peerId = bundle['deviceId']?.toString();
+    final exportedAt = DateTime.tryParse(
+      bundle['exportedAt']?.toString() ?? '',
+    );
+    if (peerId != null && exportedAt != null) {
+      await AppSettings(
+        db,
+      ).recordLedgerImport(peerId, exportedAt, DateTime.now());
+    }
     return summary;
   }
 
@@ -529,10 +603,12 @@ class FolderSyncResult {
   final MergeSummary merged = MergeSummary();
   int peersRead = 0;
   int peersSkipped = 0;
+  int peersUpToDate = 0; // a peer whose export hadn't changed since last time
+  bool exported = false; // did this pass re-write our own file (data changed)?
 
   @override
   String toString() {
-    if (peersRead == 0 && peersSkipped == 0) {
+    if (peersRead == 0 && peersSkipped == 0 && peersUpToDate == 0) {
       return 'Saved. No other device has written here yet.';
     }
     final parts = <String>[

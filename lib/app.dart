@@ -51,6 +51,12 @@ class _RootShellState extends ConsumerState<_RootShell>
   Timer? _syncTimer;
   DateTime? _lastAutoSync;
 
+  // §9 ledger folder sync triggers: a heartbeat to *pull* the other device's
+  // changes, and a debounced DB listener to *push* ours soon after any edit.
+  Timer? _ledgerTimer;
+  Timer? _ledgerDebounce;
+  StreamSubscription<void>? _ledgerWatch;
+
   @override
   void initState() {
     super.initState();
@@ -64,18 +70,47 @@ class _RootShellState extends ConsumerState<_RootShell>
       const Duration(minutes: 10),
       (_) => _autoSync(),
     );
+
+    // Heartbeat: pull peer changes every few minutes (a no-op if folder sync
+    // isn't configured — syncNow returns null).
+    _ledgerTimer = Timer.periodic(
+      const Duration(minutes: 3),
+      (_) => _pokeLedger(),
+    );
+    // Push: when local data changes, run a pass shortly after (debounced).
+    // Settings-only writes are ignored — the sync itself writes settings, and
+    // reacting to that would loop.
+    final db = ref.read(appDatabaseProvider);
+    _ledgerWatch = db.tableUpdates().listen((updates) {
+      if (updates.every((u) => u.table == 'settings')) return;
+      _ledgerDebounce?.cancel();
+      _ledgerDebounce = Timer(const Duration(seconds: 8), _pokeLedger);
+    });
   }
 
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _ledgerTimer?.cancel();
+    _ledgerDebounce?.cancel();
+    _ledgerWatch?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _autoSync();
+    if (state == AppLifecycleState.resumed) {
+      _autoSync();
+      _pokeLedger();
+    }
+  }
+
+  /// Re-run the watched-folder pass by invalidating its provider (home listens
+  /// and refreshes the views a merge touched). Cheap no-op when folder sync is
+  /// off.
+  void _pokeLedger() {
+    if (mounted) ref.invalidate(ledgerAutoSyncProvider);
   }
 
   /// First-run coach flow (§20.2) — shown once until dismissed; re-openable

@@ -298,6 +298,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 'the other; do it either way, as often as you like.',
               ),
             ),
+            const _LedgerSyncStatus(),
             ListTile(
               leading: const Icon(Icons.upload_file_outlined),
               title: const Text('Export a ledger file'),
@@ -434,6 +435,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.invalidate(activeAreasProvider);
     ref.invalidate(areaScoresProvider);
     ref.invalidate(overallEffectivenessProvider);
+    ref.invalidate(ledgerSyncStatusProvider);
+    ref.invalidate(unclassifiedTasksProvider);
   }
 
   /// Ask for the passphrase that protects the ledger file. The same one is set
@@ -526,6 +529,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final content = passphrase == null
           ? await sync.exportJson()
           : await sync.exportEncrypted(passphrase);
+      await ref.read(appSettingsProvider).setLedgerExportAt(DateTime.now());
+      ref.invalidate(ledgerSyncStatusProvider);
       final stamp = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
       final name = 'saara-ledger-$stamp.saara';
 
@@ -606,6 +611,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.invalidate(activeAreasProvider);
       ref.invalidate(areaScoresProvider);
       ref.invalidate(overallEffectivenessProvider);
+      ref.invalidate(ledgerSyncStatusProvider);
+      ref.invalidate(unclassifiedTasksProvider);
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
@@ -789,6 +796,92 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SnackBar(content: Text('No email app found to open.')),
       );
     }
+  }
+}
+
+/// §9 the at-a-glance sync status: Google last sync, this device's last export,
+/// and — per other device — when we last pulled its record. So the user can
+/// tell whether their devices are in step, without guessing.
+class _LedgerSyncStatus extends ConsumerWidget {
+  const _LedgerSyncStatus();
+
+  static String _when(DateTime? t) =>
+      t == null ? '—' : DateFormat('MMM d, h:mm a').format(t);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(ledgerSyncStatusProvider);
+    return async.maybeWhen(
+      orElse: () => const SizedBox.shrink(),
+      data: (s) {
+        final scheme = Theme.of(context).colorScheme;
+        final peers = s.imports.entries
+            .where((e) => e.key != s.myDeviceId)
+            .toList();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _row(
+                context,
+                Icons.cloud_done_outlined,
+                'Google last synced',
+                _when(s.google),
+              ),
+              _row(
+                context,
+                Icons.upload_file_outlined,
+                'This device exported',
+                _when(s.export),
+              ),
+              if (peers.isEmpty)
+                _row(
+                  context,
+                  Icons.devices_other_outlined,
+                  'Other devices',
+                  'none yet — import to link one',
+                )
+              else
+                for (final e in peers)
+                  _row(
+                    context,
+                    Icons.download_outlined,
+                    'From ${s.labels[e.key] ?? 'another device'}',
+                    _when(e.value.importedAt),
+                  ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _row(BuildContext c, IconData icon, String label, String value) {
+    final scheme = Theme.of(c).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(
+                c,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          Text(value, style: Theme.of(c).textTheme.bodySmall),
+        ],
+      ),
+    );
   }
 }
 
