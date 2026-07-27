@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <!-- §19 voice capture (speech-to-text) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- §9 Wi-Fi sync: scan a QR code to pair with the other device on the LAN -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- §8 foreground location for geocoding a task's place. Background location
          (ACCESS_BACKGROUND_LOCATION) is intentionally NOT declared for the first
          production release — it triggers Google Play's background-location

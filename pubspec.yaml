@@ -3,7 +3,7 @@ description: "Saara — a local-first personal integrity & productivity agent (R
 publish_to: 'none'
 
 # App version. See §7/§14 — free app, no billing.
-version: 1.4.21+163
+version: 1.4.21+164
 
 environment:
   sdk: ^3.12.2
@@ -116,6 +116,8 @@ dependencies:
   collection: ^1.18.0
   intl: ^0.19.0
   package_info_plus: ^8.0.2
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.0
 
 dev_dependencies:
   flutter_test:

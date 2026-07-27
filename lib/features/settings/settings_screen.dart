@@ -18,6 +18,7 @@ import '../google/google_sync_screen.dart';
 import '../import/import_screen.dart';
 import '../listeners/listeners_screen.dart';
 import 'ai_settings_screen.dart';
+import 'lan_sync_screen.dart';
 import 'storage_screen.dart';
 
 /// §8 / §14 Settings. Phase 1 surface: notification times, per-task reminder
@@ -300,6 +301,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const _LedgerSyncStatus(),
             ListTile(
+              leading: const Icon(Icons.wifi),
+              title: const Text('Sync over Wi-Fi'),
+              subtitle: const Text(
+                'Both on the same Wi-Fi — one shows a code, the other scans it',
+              ),
+              onTap: () => Navigator.pop(ctx, 'wifi'),
+            ),
+            const Divider(),
+            ListTile(
               leading: const Icon(Icons.upload_file_outlined),
               title: const Text('Export a ledger file'),
               subtitle: const Text('Share it to your other device'),
@@ -341,6 +351,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ),
     );
+    if (choice == 'wifi') {
+      if (!mounted) return;
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const LanSyncScreen()));
+    }
     if (choice == 'export') await _ledgerExport();
     if (choice == 'import') await _ledgerImport();
     if (choice == 'folder-on') await _folderSyncEnable();
