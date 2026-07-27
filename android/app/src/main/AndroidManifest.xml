@@ -49,6 +49,26 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- §9 Share-to-Saara: receive a ledger file shared from another app
+                 (WhatsApp, Files, email) so it imports with one tap. WhatsApp
+                 sends a document as application/octet-stream; a renamed .txt is
+                 text/plain. Content is validated on import, so a mis-share is a
+                 harmless no-op. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/json"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+            <!-- Open a ledger file directly ("Open with Saara"). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/json"/>
+            </intent-filter>
             <!-- §10 Health Connect: rationale (Android ≤13) + permission usage
                  (Android 14+). Points back to this activity. -->
             <intent-filter>

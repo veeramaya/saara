@@ -73,9 +73,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     ref.listen(ledgerAutoSyncProvider, (_, next) => refreshOnMerge(next));
-    ref.listen(driveAutoSyncProvider, (_, next) => refreshOnMerge(next));
     ref.watch(ledgerAutoSyncProvider);
-    ref.watch(driveAutoSyncProvider);
 
     return Scaffold(
       appBar: AppBar(

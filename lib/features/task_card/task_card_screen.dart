@@ -1316,7 +1316,8 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
               decoration: const InputDecoration(
                 hintText: 'Phone (optional)',
                 border: OutlineInputBorder(),
-                helperText: 'For call / WhatsApp — with country code, e.g. +91…',
+                helperText:
+                    'For call / WhatsApp — with country code, e.g. +91…',
               ),
             ),
           ],

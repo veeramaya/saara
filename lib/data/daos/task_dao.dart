@@ -114,10 +114,9 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   /// taskId → the device that first wrote it, from the `created` ledger entry.
   /// Powers the Source filter/provenance without a per-task query.
   Future<Map<String, String>> creationDevices() async {
-    final rows =
-        await (select(taskTransitions)
-              ..where((t) => t.kind.equalsValue(LedgerEventKind.created)))
-            .get();
+    final rows = await (select(
+      taskTransitions,
+    )..where((t) => t.kind.equalsValue(LedgerEventKind.created))).get();
     final out = <String, String>{};
     for (final r in rows) {
       final d = r.deviceId;

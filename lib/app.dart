@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,8 @@ import 'features/home/home_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/search/task_search_screen.dart';
 import 'providers.dart';
+import 'services/incoming_share.dart';
+import 'services/ledger_sync_service.dart';
 
 /// Root widget. §20.1 bottom NavigationBar: Today · Tasks · Areas · Progress ·
 /// Saara. Tasks is the global searchable list (§7); Saara is the conversational
@@ -66,6 +69,7 @@ class _RootShellState extends ConsumerState<_RootShell>
     WidgetsBinding.instance.addPostFrameCallback((_) => _registerDevice());
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoSync());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoach());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkIncomingShare());
     _syncTimer = Timer.periodic(
       const Duration(minutes: 10),
       (_) => _autoSync(),
@@ -103,7 +107,115 @@ class _RootShellState extends ConsumerState<_RootShell>
     if (state == AppLifecycleState.resumed) {
       _autoSync();
       _pokeLedger();
+      // A "Share → Saara" brings us to the foreground, so resume is when a
+      // shared ledger file is waiting to be picked up (§9).
+      _checkIncomingShare();
     }
+  }
+
+  /// §9 Share-to-Saara: if another app handed us a ledger file (WhatsApp
+  /// "Share → Saara", or "Open with"), import it. Runs on launch and on every
+  /// resume, since a share is what foregrounds us. A stray non-ledger share is
+  /// a silent no-op, never an error.
+  bool _handlingShare = false;
+  Future<void> _checkIncomingShare() async {
+    if (_handlingShare || !mounted) return;
+    _handlingShare = true;
+    try {
+      final content = await IncomingShare.consume();
+      if (content == null || !mounted) return;
+      await _importSharedLedger(content);
+    } finally {
+      _handlingShare = false;
+    }
+  }
+
+  Future<void> _importSharedLedger(String content) async {
+    final sync = ref.read(ledgerSyncServiceProvider);
+    if (!_looksLikeLedger(sync, content)) return; // not ours — ignore quietly
+    final messenger = ScaffoldMessenger.of(context);
+    String? passphrase;
+    if (sync.isEncrypted(content)) {
+      passphrase = await _askSharePassphrase();
+      if (passphrase == null || passphrase.isEmpty || !mounted) return;
+    }
+    try {
+      final summary = await sync.importFile(content, passphrase: passphrase);
+      _refreshAfterImport();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 5),
+          content: Text(
+            summary.isEmpty
+                ? 'Already up to date — nothing new to merge.'
+                : 'Imported from share — $summary',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      }
+    }
+  }
+
+  /// True when [content] is a Saara ledger — encrypted (has our magic) or a
+  /// plain bundle carrying the expected keys. Guards against importing a random
+  /// text share that happened to route through the share filter.
+  bool _looksLikeLedger(LedgerSyncService sync, String content) {
+    if (sync.isEncrypted(content)) return true;
+    try {
+      final m = jsonDecode(content);
+      return m is Map &&
+          (m.containsKey('bundleFormat') ||
+              m.containsKey('ledger') ||
+              m.containsKey('tasks'));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> _askSharePassphrase() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import password'),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'The password set on the other device',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _refreshAfterImport() {
+    ref.invalidate(allTasksProvider);
+    ref.invalidate(unscheduledTasksProvider);
+    ref.invalidate(tasksForDayProvider);
+    ref.invalidate(tasksBetweenProvider);
+    ref.invalidate(scheduleConflictsProvider);
+    ref.invalidate(activeAreasProvider);
+    ref.invalidate(areaScoresProvider);
+    ref.invalidate(overallEffectivenessProvider);
+    ref.invalidate(ledgerSyncStatusProvider);
+    ref.invalidate(unclassifiedTasksProvider);
   }
 
   /// Re-run the watched-folder pass by invalidating its provider (home listens
@@ -112,7 +224,6 @@ class _RootShellState extends ConsumerState<_RootShell>
   void _pokeLedger() {
     if (!mounted) return;
     ref.invalidate(ledgerAutoSyncProvider);
-    ref.invalidate(driveAutoSyncProvider);
   }
 
   /// First-run coach flow (§20.2) — shown once until dismissed; re-openable

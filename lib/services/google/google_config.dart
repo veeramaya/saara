@@ -12,19 +12,13 @@
 /// (and re-add the scope below) once verification is done.
 const bool kDrivePickerEnabled = false;
 
-/// §9 Device-to-device sync through Google Drive's **app data folder** — a
-/// hidden folder only Saara can see (`drive.appdata`). Saara stores just its
-/// own encrypted ledger file there; it **cannot see any of the user's real Drive
-/// files**. Unlike `drive`/`drive.readonly` this scope is only *sensitive*, not
-/// restricted — so it needs the light brand review, never a CASA assessment.
-const bool kDriveSyncEnabled = true;
-
 /// Scopes requested incrementally (§2). Tasks read/write; Calendar events for
-/// the optional add-on; drive.appdata for the hidden sync file. Keep this list
-/// *sensitive-only* — restricted scopes (full Drive) are deliberately excluded.
+/// the optional add-on. Device-to-device sync does **not** go through Google —
+/// it travels as a ledger file the user moves between devices (WhatsApp, a
+/// shared folder, Share-to-Saara). So Saara requests **no Drive scope at all**,
+/// keeping this list *sensitive-only* and the review light.
 const kGoogleScopes = <String>[
   'https://www.googleapis.com/auth/tasks',
   'https://www.googleapis.com/auth/calendar.events',
   if (kDrivePickerEnabled) 'https://www.googleapis.com/auth/drive.readonly',
-  if (kDriveSyncEnabled) 'https://www.googleapis.com/auth/drive.appdata',
 ];

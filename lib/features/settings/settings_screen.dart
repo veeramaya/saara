@@ -337,38 +337,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
               },
             ),
-            FutureBuilder<bool>(
-              future: ref.read(ledgerDriveSyncProvider).isEnabled,
-              builder: (context, snap) {
-                final on = snap.data ?? false;
-                return ListTile(
-                  leading: Icon(
-                    on ? Icons.cloud_done : Icons.cloud_sync_outlined,
-                  ),
-                  title: Text(
-                    on
-                        ? 'Google Drive sync — on'
-                        : 'Sync automatically via Google Drive',
-                  ),
-                  subtitle: Text(
-                    on
-                        ? 'Syncing through a hidden, app-only Drive folder. Tap '
-                              'to turn off.'
-                        : 'Seamless on every device — no shared folder needed. '
-                              'Uses a private Drive folder Saara alone can see.',
-                  ),
-                  trailing: on
-                      ? TextButton.icon(
-                          icon: const Icon(Icons.sync),
-                          label: const Text('Sync now'),
-                          onPressed: () => Navigator.pop(ctx, 'drive-sync'),
-                        )
-                      : null,
-                  onTap: () =>
-                      Navigator.pop(ctx, on ? 'drive-off' : 'drive-on'),
-                );
-              },
-            ),
           ],
         ),
       ),
@@ -377,86 +345,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (choice == 'import') await _ledgerImport();
     if (choice == 'folder-on') await _folderSyncEnable();
     if (choice == 'folder-manage') await _folderSyncManage();
-    if (choice == 'drive-on') await _driveSyncEnable();
-    if (choice == 'drive-off') await _driveSyncDisable();
-    if (choice == 'drive-sync') await _driveSyncNow();
-  }
-
-  /// Run one Drive pass now and show exactly what happened — did our file
-  /// upload, did we pull a peer, was anything skipped (and why). This is the
-  /// on-device diagnostic: run it on both phones and the two reports tell you
-  /// whether the ledger is actually crossing.
-  Future<void> _driveSyncNow() async {
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _ledgerBusy = true);
-    try {
-      final result = await ref.read(ledgerDriveSyncProvider).syncNow();
-      _refreshAfterMerge();
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 8),
-          content: Text(
-            result == null
-                ? 'Drive sync is off or Google not connected.'
-                : 'Drive: $result',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Drive sync failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _ledgerBusy = false);
-    }
-  }
-
-  Future<void> _driveSyncEnable() async {
-    // Needs a live Google connection (the drive.appdata scope is granted there).
-    if (!await ref.read(googleSyncServiceProvider).isConnected()) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Connect Google first (Settings → Google Tasks sync), then turn on '
-            'Drive sync.',
-          ),
-        ),
-      );
-      return;
-    }
-    final passphrase = await _askPassphrase(creating: true);
-    if (passphrase == null || passphrase.isEmpty || !mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _ledgerBusy = true);
-    try {
-      final result = await ref.read(ledgerDriveSyncProvider).enable(passphrase);
-      _refreshAfterMerge();
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 5),
-            content: Text('Google Drive sync on. $result'),
-          ),
-        );
-      }
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Could not set up: $e')));
-    } finally {
-      if (mounted) setState(() => _ledgerBusy = false);
-    }
-  }
-
-  Future<void> _driveSyncDisable() async {
-    await ref.read(ledgerDriveSyncProvider).disable();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Google Drive sync turned off.')),
-    );
   }
 
   /// Detected cloud-sync roots on desktop (OneDrive / Google Drive), where a

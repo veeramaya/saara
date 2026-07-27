@@ -16,7 +16,6 @@ import 'domain/task_state_machine.dart';
 import 'services/ai/ai_config.dart';
 import 'services/app_settings.dart';
 import 'services/export_service.dart';
-import 'services/ledger_drive_sync.dart';
 import 'services/ledger_folder_sync.dart';
 import 'services/ledger_sync_service.dart';
 import 'services/reset_service.dart';
@@ -70,25 +69,6 @@ final ledgerAutoSyncProvider = FutureProvider<FolderSyncResult?>((ref) async {
     return await ref.watch(ledgerFolderSyncProvider).syncNow();
   } catch (_) {
     return null; // a missing/renamed folder must not block startup
-  }
-});
-
-/// §9 device-to-device sync via Google Drive's app-data folder (drive.appdata).
-final ledgerDriveSyncProvider = Provider<LedgerDriveSync>(
-  (ref) => LedgerDriveSync(
-    settings: ref.watch(appSettingsProvider),
-    sync: ref.watch(ledgerSyncServiceProvider),
-    google: ref.watch(googleSyncServiceProvider),
-  ),
-);
-
-/// Runs one Drive-sync pass, if enabled + connected. Null otherwise. Watched by
-/// the home screen so a fresh pull lands on open, poked by the sync heartbeat.
-final driveAutoSyncProvider = FutureProvider<FolderSyncResult?>((ref) async {
-  try {
-    return await ref.watch(ledgerDriveSyncProvider).syncNow();
-  } catch (_) {
-    return null; // never block startup on a sync hiccup
   }
 });
 
