@@ -347,10 +347,83 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (choice == 'folder-manage') await _folderSyncManage();
   }
 
-  Future<void> _folderSyncEnable() async {
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Choose a folder both devices can see',
+  /// Detected cloud-sync roots on desktop (OneDrive / Google Drive), where a
+  /// "Saara" subfolder can be created and will propagate to the other device on
+  /// its own. Empty on mobile / when none are found.
+  List<({String label, String path})> _detectedSyncRoots() {
+    if (!isDesktop) return const [];
+    final env = Platform.environment;
+    final home = env['USERPROFILE'] ?? env['HOME'];
+    final roots = <({String label, String path})>[];
+    void add(String label, String? path) {
+      if (path != null && path.isNotEmpty && Directory(path).existsSync()) {
+        roots.add((label: label, path: path));
+      }
+    }
+
+    add('OneDrive', env['OneDrive'] ?? (home == null ? null : '$home\\OneDrive'));
+    add('Google Drive', home == null ? null : '$home\\Google Drive');
+    // Google Drive for Desktop mounts a virtual drive: <letter>:\My Drive.
+    for (final l in 'DEFGHIJKLMNOPQRSTUVWXYZ'.split('')) {
+      add('Google Drive ($l:)', '$l:\\My Drive');
+    }
+    return roots;
+  }
+
+  /// Let the user set the sync folder: offer to **create a Saara folder** inside
+  /// a detected cloud location (one tap, always writable), or pick their own.
+  Future<String?> _chooseSyncFolder() async {
+    final roots = _detectedSyncRoots();
+    if (roots.isEmpty) {
+      return FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Choose a folder both devices can see',
+      );
+    }
+    if (!mounted) return null;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                'Saara will create a "Saara" folder here and keep it in step. '
+                'Pick a place your other device also syncs.',
+              ),
+            ),
+            for (final r in roots)
+              ListTile(
+                leading: const Icon(Icons.create_new_folder_outlined),
+                title: Text('Create in ${r.label}'),
+                subtitle: Text('${r.path}\\Saara'),
+                onTap: () => Navigator.pop(ctx, r.path),
+              ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.folder_open_outlined),
+              title: const Text('Choose another folder…'),
+              onTap: () => Navigator.pop(ctx, '__custom__'),
+            ),
+          ],
+        ),
+      ),
     );
+    if (choice == null) return null;
+    if (choice == '__custom__') {
+      return FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Choose a folder both devices can see',
+      );
+    }
+    // A detected root → create (or reuse) the Saara subfolder in it.
+    final target = Directory('$choice${Platform.pathSeparator}Saara');
+    await target.create(recursive: true);
+    return target.path;
+  }
+
+  Future<void> _folderSyncEnable() async {
+    final dir = await _chooseSyncFolder();
     if (dir == null || !mounted) return;
     final passphrase = await _askPassphrase(creating: true);
     if (passphrase == null || passphrase.isEmpty || !mounted) return;
