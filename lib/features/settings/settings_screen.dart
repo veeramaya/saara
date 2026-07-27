@@ -357,6 +357,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         : 'Seamless on every device — no shared folder needed. '
                               'Uses a private Drive folder Saara alone can see.',
                   ),
+                  trailing: on
+                      ? TextButton.icon(
+                          icon: const Icon(Icons.sync),
+                          label: const Text('Sync now'),
+                          onPressed: () => Navigator.pop(ctx, 'drive-sync'),
+                        )
+                      : null,
                   onTap: () =>
                       Navigator.pop(ctx, on ? 'drive-off' : 'drive-on'),
                 );
@@ -372,6 +379,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (choice == 'folder-manage') await _folderSyncManage();
     if (choice == 'drive-on') await _driveSyncEnable();
     if (choice == 'drive-off') await _driveSyncDisable();
+    if (choice == 'drive-sync') await _driveSyncNow();
+  }
+
+  /// Run one Drive pass now and show exactly what happened — did our file
+  /// upload, did we pull a peer, was anything skipped (and why). This is the
+  /// on-device diagnostic: run it on both phones and the two reports tell you
+  /// whether the ledger is actually crossing.
+  Future<void> _driveSyncNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _ledgerBusy = true);
+    try {
+      final result = await ref.read(ledgerDriveSyncProvider).syncNow();
+      _refreshAfterMerge();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(
+            result == null
+                ? 'Drive sync is off or Google not connected.'
+                : 'Drive: $result',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Drive sync failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _ledgerBusy = false);
+    }
   }
 
   Future<void> _driveSyncEnable() async {

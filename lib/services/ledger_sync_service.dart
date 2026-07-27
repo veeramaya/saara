@@ -213,8 +213,9 @@ class LedgerSyncService {
         result.merged.add(merged);
         result.peersRead++;
         // importBundle records the import timestamp (used by the gate above).
-      } catch (_) {
+      } catch (e) {
         result.peersSkipped++;
+        result.skips.add(_skipReason(e));
       }
     }
     return result;
@@ -282,8 +283,9 @@ class LedgerSyncService {
         }
         result.merged.add(await importBundle(peer));
         result.peersRead++;
-      } catch (_) {
+      } catch (e) {
         result.peersSkipped++;
+        result.skips.add(_skipReason(e));
       }
     }
     return result;
@@ -677,21 +679,39 @@ class FolderSyncResult {
   int peersSkipped = 0;
   int peersUpToDate = 0; // a peer whose export hadn't changed since last time
   bool exported = false; // did this pass re-write our own file (data changed)?
+  final List<String> skips = []; // a short reason per skipped peer file
 
   @override
   String toString() {
-    if (peersRead == 0 && peersSkipped == 0 && peersUpToDate == 0) {
-      return 'Saved. No other device has written here yet.';
+    // Always say what happened to *our own* file first — that's the question a
+    // user actually has ("did my change go out?"). Then the peer side.
+    final parts = <String>[exported ? 'Uploaded ✓' : 'Ours unchanged'];
+    if (peersRead > 0) {
+      parts.add(merged.isEmpty ? 'peers already merged' : 'pulled $merged');
     }
-    final parts = <String>[
-      if (merged.isEmpty) 'Already up to date' else merged.toString(),
-    ];
-    if (peersSkipped > 0) {
+    if (peersUpToDate > 0) {
       parts.add(
-        '$peersSkipped file${peersSkipped == 1 ? '' : 's'} skipped '
-        '(unreadable or still downloading)',
+        '$peersUpToDate peer${peersUpToDate == 1 ? '' : 's'} unchanged',
       );
+    }
+    if (peersSkipped > 0) {
+      final why = skips.isEmpty ? '' : ' (${skips.toSet().join('; ')})';
+      parts.add('$peersSkipped skipped$why');
+    }
+    if (peersRead == 0 && peersSkipped == 0 && peersUpToDate == 0) {
+      parts.add('no other device has written here yet');
     }
     return parts.join(' · ');
   }
+}
+
+/// Turn a merge/decrypt error into a short human reason for the sync report.
+/// The decisive one is a decrypt failure — that means the two devices are on
+/// **different passphrases**, which otherwise looks identical to "did nothing".
+String _skipReason(Object e) {
+  final s = e.toString().toLowerCase();
+  if (e is FormatException || s.contains('decrypt') || s.contains('pad')) {
+    return "couldn't decrypt — passphrase mismatch?";
+  }
+  return 'unreadable or still uploading';
 }
