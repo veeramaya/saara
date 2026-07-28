@@ -8,7 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_links.dart';
 import '../../core/platform.dart';
 import '../../providers.dart';
 import '../../services/feedback_service.dart';
@@ -188,6 +190,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               context,
             ).push(MaterialPageRoute(builder: (_) => const CoachScreen())),
           ),
+          // Cross-platform pointer: on mobile, tell users the Windows desktop
+          // app exists and give them a link to pull it (or share it to their
+          // PC). Hidden on desktop — you're already on it.
+          if (!isDesktop)
+            ListTile(
+              leading: const Icon(Icons.desktop_windows_outlined),
+              title: const Text('Saara for Windows'),
+              subtitle: const Text('Get the desktop app on your PC'),
+              trailing: IconButton(
+                icon: const Icon(Icons.ios_share_outlined),
+                tooltip: 'Share the download link',
+                onPressed: () => Share.share(
+                  'Get Saara for Windows: $kDesktopDownloadUrl',
+                  subject: 'Saara for Windows',
+                ),
+              ),
+              onTap: () => launchUrl(
+                Uri.parse(kDesktopDownloadUrl),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
           ListTile(
             leading: const Icon(Icons.mail_outline),
             title: const Text('Send feedback to the maker'),
