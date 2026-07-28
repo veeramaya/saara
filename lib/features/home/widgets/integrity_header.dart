@@ -98,6 +98,45 @@ class _IntegrityHeaderState extends ConsumerState<IntegrityHeader>
                   ),
                 ),
               ),
+              // The finish line — the payoff, fading in when the journey rests
+              // at your standing, sharing the animation's own timing.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _t,
+                  builder: (context, time, _) {
+                    final o = _computePhase(time, target ?? 0.9).payoff;
+                    return Opacity(
+                      opacity: o,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Integrity is a path to being whole and complete '
+                            'in all the spaces of your life.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: scheme.onSurface,
+                                  height: 1.35,
+                                ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Saara enables that for you.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         );
@@ -227,23 +266,13 @@ class _JourneyPainter extends CustomPainter {
     final rings = [r3 * 0.29, r3 * 0.53, r3 * 0.76, r3];
     double font(double base) => math.max(8.5, base * k);
 
-    // The journey loops: climb to the live standing, hold a beat, then fade and
-    // re-tell — so the header is always alive, not frozen after one play. The
-    // fade (not a retreat) means the rings never look like they're *un*-filling.
+    // The journey loops, slowly, pausing at each space so every stage can sink
+    // in: climb → hold at your standing (payoff appears) → fade → begin again.
+    // Timing lives in _computePhase so the payoff text below can share it.
     final effTarget = target ?? 0.9;
-    const period = 8.0;
-    final cyc = time % period;
-    double f, sceneA = 1;
-    if (cyc < 4.0) {
-      f = _easeOut(cyc / 4.0); // climb
-    } else if (cyc < 6.5) {
-      f = 1; // hold at the standing
-    } else {
-      f = 1;
-      sceneA = 1 - (cyc - 6.5) / 1.5; // fade out at the standing
-    }
-    if (cyc < 0.8) sceneA = cyc / 0.8; // fade the fresh journey back in
-    final p = (effTarget * f).clamp(0.0, 1.0);
+    final ph = _computePhase(time, effTarget);
+    final p = ph.p;
+    final sceneA = ph.sceneA;
 
     final whole = p >= 0.999;
     final int ringIndex;
@@ -384,4 +413,90 @@ class _JourneyPainter extends CustomPainter {
       old.muted != muted ||
       old.target != target ||
       old.targetLabel != targetLabel;
+}
+
+/// The looping timeline, shared by the painter and the payoff text so they stay
+/// in lock-step. Deliberately unhurried: the Person climbs to the live standing
+/// [tgt], **pausing at each space it completes** so the viewer can take it in,
+/// holds at the top while the payoff shows, then the whole scene fades and
+/// begins again.
+class _Phase {
+  const _Phase(this.p, this.sceneA, this.payoff);
+  final double p; // journey progress 0..1
+  final double sceneA; // group opacity for the fade in/out
+  final double payoff; // opacity of the finish-line payoff text
+}
+
+double _easeIO(double x) {
+  x = x.clamp(0, 1).toDouble();
+  return x * x * (3 - 2 * x);
+}
+
+double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+_Phase _computePhase(double time, double tgt) {
+  const moveQuarter = 2.2; // seconds to travel one ring's quarter of the path
+  const pauseDur = 1.6; // the "let it sink in" pause at each completed space
+  const holdDur = 3.0, fadeDur = 1.6, fadeIn = 0.8;
+
+  // Boundaries the journey actually crosses on the way to the standing.
+  final stops = <double>[
+    for (final b in const [0.25, 0.5, 0.75])
+      if (b < tgt - 1e-6) b,
+    tgt,
+  ];
+
+  final p0 = <double>[], p1 = <double>[], dur = <double>[];
+  final pause = <bool>[];
+  var cur = 0.0;
+  for (final b in stops) {
+    p0.add(cur);
+    p1.add(b);
+    dur.add(((b - cur) / 0.25) * moveQuarter);
+    pause.add(false);
+    if (b < tgt - 1e-6) {
+      p0.add(b);
+      p1.add(b);
+      dur.add(pauseDur);
+      pause.add(true);
+    }
+    cur = b;
+  }
+  var climbDur = 0.0;
+  for (final d in dur) {
+    climbDur += d;
+  }
+
+  final period = climbDur + holdDur + fadeDur;
+  final cyc = time % period;
+
+  var p = tgt, sceneA = 1.0, payoff = 0.0;
+  if (cyc < climbDur) {
+    var acc = 0.0;
+    p = 0;
+    for (var i = 0; i < dur.length; i++) {
+      if (cyc < acc + dur[i]) {
+        final u = (cyc - acc) / dur[i];
+        p = pause[i] ? p0[i] : _lerp(p0[i], p1[i], _easeIO(u));
+        break;
+      }
+      acc += dur[i];
+      p = p1[i];
+    }
+  } else if (cyc < climbDur + holdDur) {
+    p = tgt;
+    payoff = _easeIO((cyc - climbDur) / 0.6); // fade the payoff in at the top
+  } else {
+    p = tgt;
+    payoff = 1;
+    sceneA = 1 - (cyc - climbDur - holdDur) / fadeDur;
+  }
+  if (cyc < fadeIn) sceneA = cyc / fadeIn;
+
+  sceneA = sceneA.clamp(0, 1).toDouble();
+  return _Phase(
+    p.clamp(0, 1).toDouble(),
+    sceneA,
+    (payoff * sceneA).clamp(0, 1).toDouble(),
+  );
 }
