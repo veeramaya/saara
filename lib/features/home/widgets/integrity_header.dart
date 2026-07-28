@@ -98,43 +98,32 @@ class _IntegrityHeaderState extends ConsumerState<IntegrityHeader>
                   ),
                 ),
               ),
-              // The finish line — the payoff, fading in when the journey rests
-              // at your standing, sharing the animation's own timing.
+              // The finish line — the payoff, kept static in the footer so it's
+              // always readable, not flashing by with the loop.
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _t,
-                  builder: (context, time, _) {
-                    final o = _computePhase(time, target ?? 0.9).payoff;
-                    return Opacity(
-                      opacity: o,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Integrity is a path to being whole and complete '
-                            'in all the spaces of your life.',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: scheme.onSurface,
-                                  height: 1.35,
-                                ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Saara enables that for you.',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: scheme.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ],
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Integrity is a path to being whole and complete in all '
+                      'the spaces of your life.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurface.withValues(alpha: 0.78),
+                        height: 1.35,
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Saara enables that for you.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
