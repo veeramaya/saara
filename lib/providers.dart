@@ -21,7 +21,6 @@ import 'services/ledger_sync_service.dart';
 import 'services/reset_service.dart';
 import 'services/storage_service.dart';
 import 'services/contacts_service.dart';
-import 'services/health_service.dart';
 import 'services/google/google_sync_orchestrator.dart';
 import 'services/google/google_sync_service.dart';
 import 'services/recurring_engine.dart';
@@ -461,43 +460,6 @@ final scheduleConflictsProvider = FutureProvider<List<ScheduleConflict>>((
   // once, then respects the answer instead of nagging (§8).
   final kept = await ref.watch(appSettingsProvider).keptOverlaps();
   return findConflicts(open).where((c) => !kept.contains(c.key)).toList();
-});
-
-final healthServiceProvider = Provider<HealthService>((ref) => HealthService());
-
-/// §10 Syncs active health-source results from Health Connect into logs, so the
-/// normal progress/scoring path reflects real steps/sleep/weight. Requests
-/// permission on run. Returns the number of results refreshed (-1 if denied).
-/// User-triggered (don't read on build — it would prompt for permission).
-final healthSyncProvider = FutureProvider<int>((ref) async {
-  final health = ref.watch(healthServiceProvider);
-  final dao = ref.watch(areaDaoProvider);
-  final results = await dao.activeHealthResults();
-  if (results.isEmpty) return 0;
-  if (!await health.requestAuthorization()) return -1;
-  final now = DateTime.now();
-  final uuid = ref.watch(uuidProvider);
-  var count = 0;
-  for (final r in results) {
-    final period = currentPeriodKeys(r.cadence, now);
-    final from = DateTime.parse(period.from);
-    final to = DateTime.parse(period.to).add(const Duration(days: 1));
-    final value = await health.readValue(r.metricType, from, to);
-    await dao.deleteLogsForResultInRange(r.id, period.from, period.to);
-    await dao.addLog(
-      MeasurableLogsCompanion.insert(
-        id: uuid.v4(),
-        resultId: r.id,
-        date: dayKey(now),
-        value: value,
-        createdAt: now,
-      ),
-    );
-    count++;
-  }
-  // Refresh anything that shows scores.
-  ref.invalidate(areaScoresProvider);
-  return count;
 });
 
 /// "Value by Saara" tally (§13) — flat +1 per Saara action.

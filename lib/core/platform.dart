@@ -27,10 +27,6 @@ bool get isDesktop =>
 // Each maps to a plugin that has no desktop implementation (verified against
 // windows/flutter/generated_plugins.cmake).
 
-/// Health Connect — Android only (§10).
-bool get supportsHealth =>
-    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-
 /// On-device contacts for task participants (§11).
 bool get supportsContacts => isMobile;
 

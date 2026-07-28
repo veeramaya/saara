@@ -96,13 +96,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 MaterialPageRoute(builder: (_) => const GoogleSyncScreen()),
               ),
             ),
-          if (supportsHealth)
-            ListTile(
-              leading: const Icon(Icons.favorite_border),
-              title: const Text('Sync from Health Connect'),
-              subtitle: const Text('Auto-score steps / sleep / weight results'),
-              onTap: _syncHealth,
-            ),
 
           const Divider(),
           _sectionTitle('Sharing'),
@@ -272,35 +265,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'Complete your day',
         body: 'Give each task its disposition.',
       );
-    }
-  }
-
-  /// §10 pull steps/sleep/weight from Health Connect and refresh health results.
-  Future<void> _syncHealth() async {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Syncing from Health…')),
-    );
-    try {
-      final n = await ref.refresh(healthSyncProvider.future);
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            n < 0
-                ? 'Health access not granted — allow it in Health Connect.'
-                : n == 0
-                ? 'No health-source results yet. Add one in an Area (e.g. "8000 steps").'
-                : 'Synced $n health result${n == 1 ? '' : 's'}.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Health sync failed: $e')),
-        );
-      }
     }
   }
 

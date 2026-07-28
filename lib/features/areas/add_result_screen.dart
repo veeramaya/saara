@@ -62,16 +62,16 @@ class _AddResultScreenState extends ConsumerState<AddResultScreen> {
     if (picked != null) setState(() => _endDate = picked);
   }
 
-  // Manual-loggable metrics only (health metrics come in Phase 3).
+  // Manual-loggable metrics. Health Connect auto-sourcing (steps/sleep/weight)
+  // was removed before launch — Saara isn't a health app — so those types are
+  // no longer offered for new results. An existing health result stays editable
+  // (see the dropdown below). Re-add the health* types here if it returns.
   static const _metrics = [
     MetricType.count,
     MetricType.durationMin,
     MetricType.numeric,
     MetricType.currency,
     MetricType.boolean,
-    MetricType.healthSteps,
-    MetricType.healthSleepHr,
-    MetricType.healthWeight,
   ];
 
   static const _healthMetrics = {
@@ -156,6 +156,13 @@ class _AddResultScreenState extends ConsumerState<AddResultScreen> {
             items: [
               for (final m in _metrics)
                 DropdownMenuItem(value: m, child: Text(_metricLabel(m))),
+              // Keep a pre-existing health-source result selectable when editing,
+              // even though new ones can't be created any more.
+              if (_isEdit && _healthMetrics.contains(_metric))
+                DropdownMenuItem(
+                  value: _metric,
+                  child: Text(_metricLabel(_metric)),
+                ),
             ],
             onChanged: (v) => setState(() {
               _metric = v!;

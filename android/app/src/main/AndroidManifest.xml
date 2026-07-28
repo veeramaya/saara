@@ -21,11 +21,6 @@
          review. Re-add it with kGeofenceEnabled=true once that's prepared. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <!-- §10 Health Connect read permissions (auto-score health results) -->
-    <uses-permission android:name="android.permission.health.READ_STEPS"/>
-    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
-    <uses-permission android:name="android.permission.health.READ_SLEEP"/>
-    <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
 
     <application
         android:label="Saara"
@@ -72,27 +67,7 @@
                 <data android:mimeType="application/octet-stream"/>
                 <data android:mimeType="application/json"/>
             </intent-filter>
-            <!-- §10 Health Connect: rationale (Android ≤13) + permission usage
-                 (Android 14+). Points back to this activity. -->
-            <intent-filter>
-                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/>
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
-                <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
-            </intent-filter>
         </activity>
-        <!-- §10 Health Connect rationale target for Android 14+ (alias). -->
-        <activity-alias
-            android:name="ViewPermissionUsageActivity"
-            android:exported="true"
-            android:targetActivity=".MainActivity"
-            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
-                <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
-            </intent-filter>
-        </activity-alias>
         <!-- §11 OCR: have Play Services fetch the ML Kit text-recognition model
              at install time so on-device recognition works offline first-run. -->
         <meta-data
@@ -132,7 +107,5 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="tel"/>
         </intent>
-        <!-- §10 Health Connect package visibility -->
-        <package android:name="com.google.android.apps.healthdata"/>
     </queries>
 </manifest>
