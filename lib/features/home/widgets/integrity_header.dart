@@ -373,6 +373,19 @@ class _JourneyPainter extends CustomPainter {
       _s((1.4 + overall * 1.4) * k, 0.3 + 0.5 * overall),
     );
 
+    // the dynamic label sinking in: at each level pause, name it in the centre
+    if (ph.pauseLevel != null && ph.levelEmphasis > 0) {
+      _text(
+        canvas,
+        ph.pauseLevel!,
+        centre,
+        font(22),
+        brand,
+        FontWeight.w800,
+        ph.levelEmphasis,
+      );
+    }
+
     // readout below the rings — the standing, shown once (no clutter on the head)
     final by = cy + r3 + 20 * k;
     if (target == null) {
@@ -417,14 +430,23 @@ class _JourneyPainter extends CustomPainter {
 
 /// The looping timeline, shared by the painter and the payoff text so they stay
 /// in lock-step. Deliberately unhurried: the Person climbs to the live standing
-/// [tgt], **pausing at each space it completes** so the viewer can take it in,
-/// holds at the top while the payoff shows, then the whole scene fades and
-/// begins again.
+/// [tgt], **pausing at each reliability *level* it reaches** — Learner, Amateur,
+/// Professional, Champion, Masterful — and naming it, so the *dynamic* label
+/// sinks in (the *spaces* are static ring labels, always visible). Then it holds
+/// at the top while the payoff shows, fades, and begins again.
 class _Phase {
-  const _Phase(this.p, this.sceneA, this.payoff);
+  const _Phase(
+    this.p,
+    this.sceneA,
+    this.payoff,
+    this.pauseLevel,
+    this.levelEmphasis,
+  );
   final double p; // journey progress 0..1
   final double sceneA; // group opacity for the fade in/out
   final double payoff; // opacity of the finish-line payoff text
+  final String? pauseLevel; // the level name to surface during a pause
+  final double levelEmphasis; // 0..1 how strongly to show pauseLevel
 }
 
 double _easeIO(double x) {
@@ -434,34 +456,42 @@ double _easeIO(double x) {
 
 double _lerp(double a, double b, double t) => a + (b - a) * t;
 
+// The reliability levels the journey pauses on, as fractions of the whole path.
+const _levelP = [0.20, 0.40, 0.60, 0.78, 0.93];
+const _levelN = ['Learner', 'Amateur', 'Professional', 'Champion', 'Masterful'];
+
 _Phase _computePhase(double time, double tgt) {
-  const moveQuarter = 2.2; // seconds to travel one ring's quarter of the path
-  const pauseDur = 1.6; // the "let it sink in" pause at each completed space
+  const speed = 0.12; // journey-fraction per second while moving (unhurried)
+  const pauseDur = 1.9; // the "let it sink in" pause at each level
   const holdDur = 3.0, fadeDur = 1.6, fadeIn = 0.8;
 
-  // Boundaries the journey actually crosses on the way to the standing.
-  final stops = <double>[
-    for (final b in const [0.25, 0.5, 0.75])
-      if (b < tgt - 1e-6) b,
-    tgt,
-  ];
-
+  // Build move/pause segments up to the standing, naming each level pause.
   final p0 = <double>[], p1 = <double>[], dur = <double>[];
-  final pause = <bool>[];
-  var cur = 0.0;
-  for (final b in stops) {
-    p0.add(cur);
+  final nm = <String?>[];
+  final isPause = <bool>[];
+  void seg(double a, double b, double d, bool pause, String? name) {
+    p0.add(a);
     p1.add(b);
-    dur.add(((b - cur) / 0.25) * moveQuarter);
-    pause.add(false);
-    if (b < tgt - 1e-6) {
-      p0.add(b);
-      p1.add(b);
-      dur.add(pauseDur);
-      pause.add(true);
-    }
-    cur = b;
+    dur.add(d);
+    isPause.add(pause);
+    nm.add(name);
   }
+
+  var cur = 0.0;
+  for (var i = 0; i < _levelP.length; i++) {
+    if (_levelP[i] >= tgt - 1e-6) break;
+    seg(cur, _levelP[i], (_levelP[i] - cur) / speed, false, null);
+    seg(_levelP[i], _levelP[i], pauseDur, true, _levelN[i]);
+    cur = _levelP[i];
+  }
+  seg(
+    cur,
+    tgt,
+    (tgt - cur) / speed,
+    false,
+    null,
+  ); // final climb to the standing
+
   var climbDur = 0.0;
   for (final d in dur) {
     climbDur += d;
@@ -470,14 +500,21 @@ _Phase _computePhase(double time, double tgt) {
   final period = climbDur + holdDur + fadeDur;
   final cyc = time % period;
 
-  var p = tgt, sceneA = 1.0, payoff = 0.0;
+  var p = tgt, sceneA = 1.0, payoff = 0.0, emph = 0.0;
+  String? pauseLevel;
   if (cyc < climbDur) {
     var acc = 0.0;
     p = 0;
     for (var i = 0; i < dur.length; i++) {
       if (cyc < acc + dur[i]) {
         final u = (cyc - acc) / dur[i];
-        p = pause[i] ? p0[i] : _lerp(p0[i], p1[i], _easeIO(u));
+        if (isPause[i]) {
+          p = p0[i];
+          pauseLevel = nm[i];
+          emph = math.min(u / 0.25, (1 - u) / 0.25).clamp(0, 1).toDouble();
+        } else {
+          p = _lerp(p0[i], p1[i], _easeIO(u));
+        }
         break;
       }
       acc += dur[i];
@@ -498,5 +535,7 @@ _Phase _computePhase(double time, double tgt) {
     p.clamp(0, 1).toDouble(),
     sceneA,
     (payoff * sceneA).clamp(0, 1).toDouble(),
+    pauseLevel,
+    (emph * sceneA).clamp(0, 1).toDouble(),
   );
 }
