@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Delete your Saara data</title>
+  <style>
+    :root { --ink:#1b1613; --muted:#6d635c; --line:#e7ded8; --bg:#faf8f6; --accent:#a8322a; }
+    @media (prefers-color-scheme: dark){ :root{ --ink:#f2ece7; --muted:#a99f97; --line:#2c2522; --bg:#141110; --accent:#e88b82; } }
+    *{box-sizing:border-box} body{margin:0;padding:48px 20px 96px;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    main{max-width:42rem;margin:0 auto}
+    .eyebrow{font-size:.75rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);text-decoration:none;display:inline-block;margin-bottom:1.25rem}
+    h1{font-size:2rem;line-height:1.2;margin:0 0 .25rem;letter-spacing:-.02em}
+    .updated{color:var(--muted);font-size:.9rem;margin:0 0 2rem}
+    h2{font-size:1.15rem;margin:2.25rem 0 .5rem}
+    ol{padding-left:1.2rem} li{margin:.6rem 0}
+    a{color:var(--accent)} code{background:rgba(128,128,128,.14);padding:.1em .35em;border-radius:4px;font-size:.9em}
+    .callout{border-left:3px solid var(--accent);padding:.75rem 1rem;margin:1.5rem 0;background:rgba(128,128,128,.07);border-radius:0 6px 6px 0}
+    table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.95rem}
+    th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+    footer{color:var(--muted);font-size:.875rem;margin-top:3rem;border-top:1px solid var(--line);padding-top:1.5rem}
+  </style>
+</head>
+<body>
+<main>
+  <a class="eyebrow" href="https://veeramaya.github.io/saara/privacy.html">Saara · Realmaya</a>
+  <h1>Delete your Saara data</h1>
+  <p class="updated">Last updated: 29 July 2026</p>
+
+  <div class="callout">
+    <strong>Saara is local-first.</strong> Your data lives only on your device — <strong>Realmaya keeps no copy on any server</strong>, so there is nothing for us to hold or delete. You delete your data directly, and it is gone.
+  </div>
+
+  <h2>How to delete your data</h2>
+  <ol>
+    <li><strong>Erase everything on a device (in the app):</strong> open Saara → <strong>Settings → Reset local data</strong> → confirm. This permanently removes all tasks, areas, your integrity history, captures (photos/audio/video) and settings on that device.</li>
+    <li><strong>Or uninstall Saara:</strong> removing the app deletes its entire on-device database and captures.</li>
+    <li><strong>Disconnect Google (if you used sync):</strong> Settings → <strong>Google Tasks sync → Disconnect</strong>. Tasks and events you had synced remain in <em>your own</em> Google account until you delete them there (or delete them in Saara while connected, which removes them from Google too). Manage them at <a href="https://myaccount.google.com/permissions">myaccount.google.com</a>.</li>
+    <li><strong>Remove your AI key (if you added one):</strong> Settings → Saara AI → clear the key. It is stored in your device’s secure keystore and is deleted with it.</li>
+  </ol>
+
+  <h2>What is deleted, what is kept</h2>
+  <table>
+    <tr><th>Data</th><th>What happens</th></tr>
+    <tr><td>Tasks, areas, integrity history, captures, settings, participant numbers</td><td><strong>Deleted</strong> from the device on Reset or uninstall — permanently, with no server copy anywhere.</td></tr>
+    <tr><td>Items you synced to Google</td><td><strong>Kept in your Google account</strong> until you delete them there (or in Saara while connected).</td></tr>
+    <tr><td>Data held by Realmaya</td><td><strong>None</strong> — we operate no server and store nothing, so there is no retention period on our side.</td></tr>
+  </table>
+
+  <h2>Need help?</h2>
+  <p>Email <a href="mailto:veera@realmaya.com">veera@realmaya.com</a> and we’ll walk you through it.</p>
+
+  <footer>Saara — an app by <a href="https://realmaya.com">Realmaya</a>. Local-first; collects no data.</footer>
+</main>
+</body>
+</html>
