@@ -144,7 +144,9 @@ class TaskTile extends ConsumerWidget {
     final external =
         task.kind == TaskKind.event ||
         task.source == TaskSource.gcalSync ||
-        task.source == TaskSource.shareTarget;
+        task.source == TaskSource.gcalEvent ||
+        task.source == TaskSource.shareTarget ||
+        task.source == TaskSource.invitation;
     final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(

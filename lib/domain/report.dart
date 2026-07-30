@@ -3,53 +3,72 @@ import 'enums.dart';
 
 /// A deterministic performance summary computed from the integrity ledger
 /// (TaskTransition rows, §3.3/§13). Pure — no I/O — so it's unit-testable.
+///
+/// Aligned to P-Integrity (`docs/INTEGRITY_FRAMEWORK.md`):
+/// **committed = completed + broken**, where **broken = missed + cancelled**.
+/// A `rejected` (declined / external — an invite cancelled by its organiser) is
+/// **excluded**: you didn't break a word, so it neither helps nor hurts. A
+/// `cancelled` (backing out of your *own* released word) is broken and counts.
 class ReportSummary {
   ReportSummary({
     required this.todayCompleted,
     required this.todayMissed,
+    required this.todayCancelled,
     required this.todayRejected,
     required this.weekCompleted,
     required this.weekMissed,
+    required this.weekCancelled,
     required this.weekRejected,
     required this.monthCompleted,
     required this.monthMissed,
+    required this.monthCancelled,
     required this.monthRejected,
     required this.allCompleted,
     required this.allMissed,
+    required this.allCancelled,
     required this.allRejected,
     required this.streakDays,
   });
 
   final int todayCompleted;
   final int todayMissed;
+  final int todayCancelled;
   final int todayRejected;
   final int weekCompleted;
   final int weekMissed;
+  final int weekCancelled;
   final int weekRejected;
   final int monthCompleted;
   final int monthMissed;
+  final int monthCancelled;
   final int monthRejected;
   final int allCompleted;
   final int allMissed;
+  final int allCancelled;
   final int allRejected;
 
   /// Consecutive days ending today with at least one completion.
   final int streakDays;
 
-  /// Kept-word rate over the week: completed / (completed + missed + rejected).
+  // Broken = a no-show (missed) + backing out of your own word (cancelled).
+  int get todayBroken => todayMissed + todayCancelled;
+  int get weekBroken => weekMissed + weekCancelled;
+  int get monthBroken => monthMissed + monthCancelled;
+  int get allBroken => allMissed + allCancelled;
+
+  /// Kept-word rate over the week: completed / (completed + broken).
   double get weekCompletionRate {
-    final total = weekCompleted + weekMissed + weekRejected;
+    final total = weekCompleted + weekBroken;
     return total == 0 ? 0 : weekCompleted / total;
   }
 
   // ── Reliability on a time scale (§13) ──────────────────────────────────
-  // Effectiveness = kept ÷ committed over the window, 0..100. A day can be
-  // Masterful (all done) while the week is still Amateur — the same word kept
-  // today weighs less against a week's worth of commitments.
-  int get todayCommitted => todayCompleted + todayMissed + todayRejected;
-  int get weekCommitted => weekCompleted + weekMissed + weekRejected;
-  int get monthCommitted => monthCompleted + monthMissed + monthRejected;
-  int get allCommitted => allCompleted + allMissed + allRejected;
+  // Effectiveness = kept ÷ committed over the window, 0..100. committed is
+  // kept + broken; declined (rejected) is excluded (P-Integrity).
+  int get todayCommitted => todayCompleted + todayBroken;
+  int get weekCommitted => weekCompleted + weekBroken;
+  int get monthCommitted => monthCompleted + monthBroken;
+  int get allCommitted => allCompleted + allBroken;
 
   double get todayEffectiveness =>
       todayCommitted == 0 ? 0 : todayCompleted / todayCommitted * 100;
@@ -75,15 +94,19 @@ ReportSummary buildReport(List<TaskTransition> transitions, DateTime now) {
 
   var todayCompleted = 0,
       todayMissed = 0,
+      todayCancelled = 0,
       todayRejected = 0,
       weekCompleted = 0,
       weekMissed = 0,
+      weekCancelled = 0,
       weekRejected = 0,
       monthCompleted = 0,
       monthMissed = 0,
+      monthCancelled = 0,
       monthRejected = 0,
       allCompleted = 0,
       allMissed = 0,
+      allCancelled = 0,
       allRejected = 0;
   final completedDays = <String>{};
 
@@ -104,6 +127,11 @@ ReportSummary buildReport(List<TaskTransition> transitions, DateTime now) {
         if (inToday) todayMissed++;
         if (inWeek) weekMissed++;
         if (inMonth) monthMissed++;
+      case TaskStatus.cancelled:
+        allCancelled++;
+        if (inToday) todayCancelled++;
+        if (inWeek) weekCancelled++;
+        if (inMonth) monthCancelled++;
       case TaskStatus.rejected:
         allRejected++;
         if (inToday) todayRejected++;
@@ -125,15 +153,19 @@ ReportSummary buildReport(List<TaskTransition> transitions, DateTime now) {
   return ReportSummary(
     todayCompleted: todayCompleted,
     todayMissed: todayMissed,
+    todayCancelled: todayCancelled,
     todayRejected: todayRejected,
     weekCompleted: weekCompleted,
     weekMissed: weekMissed,
+    weekCancelled: weekCancelled,
     weekRejected: weekRejected,
     monthCompleted: monthCompleted,
     monthMissed: monthMissed,
+    monthCancelled: monthCancelled,
     monthRejected: monthRejected,
     allCompleted: allCompleted,
     allMissed: allMissed,
+    allCancelled: allCancelled,
     allRejected: allRejected,
     streakDays: streak,
   );

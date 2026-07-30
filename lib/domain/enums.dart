@@ -92,6 +92,11 @@ enum TaskSource {
   todoistImport,
   fileImport,
   gcalEvent, // §9 imported from Google Calendar events
+  // §4 / P-Integrity: an invitation you received (copied from a message, social
+  // post, etc.) rather than authored. Once released you own it, but its origin
+  // is external — so it can fall away by the other side's hand. Appended last so
+  // stored indexes are untouched.
+  invitation,
 }
 
 /// §3.3 whether a row is a to-do (syncs with Google Tasks) or a time-blocked

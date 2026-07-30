@@ -18,6 +18,15 @@ class _Card {
 
 const _cards = <_Card>[
   _Card(
+    'P-Integrity',
+    'A path, not a scorecard.',
+    'Integrity here is a path you train, not a position you reach. Saara keeps a simple, honest score of whether you kept your word — and surrounds it with insights, because a number alone is never the whole of who you are.',
+    'How it works',
+    'The system owns the facts — did it happen, and when. You own the judgment — how well. The people you gave your word to are the mirror. The score is the spine; the growth lives in the insights.',
+    'The number is a compass, not a verdict — integrity is trained, not achieved.',
+    isNew: true,
+  ),
+  _Card(
     'How Saara helps',
     'Give your word. Keep it.',
     'Saara turns intentions into a track record, and shows you becoming someone whose word is trusted.',

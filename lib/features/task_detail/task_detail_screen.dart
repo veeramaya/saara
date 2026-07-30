@@ -643,7 +643,9 @@ class TaskDetailScreen extends ConsumerWidget {
         // an external cancellation, excluded from the score.
         if (task.kind == TaskKind.event ||
             task.source == TaskSource.gcalSync ||
-            task.source == TaskSource.shareTarget)
+            task.source == TaskSource.gcalEvent ||
+            task.source == TaskSource.shareTarget ||
+            task.source == TaskSource.invitation)
           OutlinedButton.icon(
             icon: const Icon(Icons.event_busy_outlined),
             label: const Text('No longer happening'),

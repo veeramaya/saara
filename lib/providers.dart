@@ -535,3 +535,25 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   final transitions = await ref.watch(taskDaoProvider).transitionsSince(since);
   return buildReport(transitions, now);
 });
+
+/// §13 / P-Integrity **timeliness** — of the words you kept, how many on time.
+/// The parallel honesty axis: a late completion is still Kept (+1) in the score,
+/// so lateness is surfaced *here* rather than fuzzing the number. Compared
+/// against the end/due time (the sole reference for a task with no start time).
+final onTimeRateProvider = FutureProvider<({int onTime, int late})>((
+  ref,
+) async {
+  final tasks = await ref.watch(taskDaoProvider).allTasks();
+  var onTime = 0, late = 0;
+  for (final t in tasks) {
+    if (t.status != TaskStatus.completed || t.completedAt == null) continue;
+    final due = t.scheduledStart ?? t.dueDate;
+    if (due == null) continue;
+    if (t.completedAt!.isAfter(due)) {
+      late++;
+    } else {
+      onTime++;
+    }
+  }
+  return (onTime: onTime, late: late);
+});

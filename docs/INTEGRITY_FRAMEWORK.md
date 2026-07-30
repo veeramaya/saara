@@ -145,6 +145,11 @@ cannot:
   Saara does not adjudicate who is right. It shows the correlation and leaves the
   judgment to you. That gap, seen honestly over time, is the work.
 
+  **Delivered as an AI-enhanced insight** (your own key, §6) — not a fixed
+  formula. The self-assessment and the listener's feedback are read *in context*
+  by the model, so the reflection is nuanced ("you consistently undersell the
+  ones that involve other people") rather than a rigid correlation coefficient.
+
 ---
 
 ## Bottom line
@@ -158,20 +163,22 @@ integrity** — not a scoreboard that mistakes a number for the truth.
 
 ---
 
-## Where today's code diverges (for the change plan, not this spec)
+## Implementation status
 
-Documented so the framework is actionable, not aspirational:
-
-- **Late completion is not yet distinguished.** Today `completed → kept` with no
-  on-time/late split. Needs the **timeliness** metric alongside the score.
-- **"Reject" is a single, always-excluded disposition.** Today
-  `rejected → declined → excluded`. The framework splits it into **Reschedule**
-  (neutral), **Cancel my commitment** (Broken), and pre-release **drop** (free).
-  Self-cancellation must count as Broken.
-- **External vs internal cancellation is not separated.** The score branch needs
-  to treat an external cancel/reschedule as *not counted* while a self-cancel of
-  an owned commitment is *Broken*.
-- **"Invitation received" provenance** is not yet a user-facing choice (the
-  `source` enum has the raw data).
-- **Self-vs-listener correlation insight** exists in concept (committed
-  listeners) but the explicit gap report is the piece to build out.
+- ✅ **Self-cancellation is a broken word.** `TaskStatus.cancelled` scores as
+  **broken**; `rejected` stays **declined / excluded**. The disposition menu
+  splits into Start · Complete · **Reschedule** (re-commit, not counted) ·
+  **Cancel — I'm not doing it** (broken) · **No longer happening** (external, not
+  counted, shown only for events / received items). Pre-release drop is free (a
+  draft never counts).
+- ✅ **Score realigned.** `committed = completed + missed + cancelled`; declined
+  is excluded — in both the ledger score and the header/report summary, which
+  previously disagreed.
+- ✅ **External vs internal cancellation separated** via the two disposition
+  choices above.
+- ✅ **Timeliness** is a parallel metric (on-time rate), never blended into the
+  score — a late completion is still Kept.
+- ✅ **P-Integrity** named and put **upfront** (first coach card).
+- ⏳ **Self-vs-listener gap → AI-enhanced insight** (fast-follow, §6).
+- ⏳ **"Invitation received" provenance:** the `source` value and the external
+  handling are in; the create-time *toggle* to set it is a small fast-follow.

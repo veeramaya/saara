@@ -48,6 +48,7 @@ class ReportsScreen extends ConsumerWidget {
             const IntegrityWheel(),
             const SizedBox(height: 16),
             _ReliabilityByScaleCard(summary: r),
+            const _OnTimeCard(),
             const _ListenerGapCard(),
             const _SaaraValueCard(),
             const SizedBox(height: 8),
@@ -67,7 +68,15 @@ class ReportsScreen extends ConsumerWidget {
               value: r.weekMissed,
               warn: true,
             ),
-            _StatRow(label: 'Rejected this week', value: r.weekRejected),
+            _StatRow(
+              label: 'Cancelled this week',
+              value: r.weekCancelled,
+              warn: true,
+            ),
+            _StatRow(
+              label: 'Declined this week (not counted)',
+              value: r.weekRejected,
+            ),
             const Divider(height: 24),
             _StatRow(label: 'Completed this month', value: r.monthCompleted),
             _StatRow(
@@ -417,6 +426,64 @@ class _RateCard extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// §13 / P-Integrity **timeliness** — the parallel honesty axis. A late
+/// completion is still Kept in the score; this is where "delayed ≠ full
+/// integrity" shows up, without fuzzing the number.
+class _OnTimeCard extends ConsumerWidget {
+  const _OnTimeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final v = ref.watch(onTimeRateProvider).valueOrNull;
+    if (v == null) return const SizedBox.shrink();
+    final total = v.onTime + v.late;
+    if (total == 0) return const SizedBox.shrink();
+    final rate = v.onTime / total;
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('On time', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: LinearProgressIndicator(
+                      value: rate,
+                      minHeight: 10,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${(rate * 100).round()}%',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ],
+              ),
+              if (v.late > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${v.late} kept, but late. A kept word is still kept — '
+                  'timeliness is its own path, not a mark against the score.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
