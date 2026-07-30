@@ -251,22 +251,62 @@ class _CalendarTaskTile extends StatelessWidget {
       );
     }
 
-    final done = task.status == TaskStatus.completed;
+    // Flag every disposition on the toggle, not just "completed" — a rejected,
+    // missed or past-due task must not read the same as one still ahead (§4).
+    final status = task.status;
+    const openStatuses = {
+      TaskStatus.created,
+      TaskStatus.started,
+      TaskStatus.inProgress,
+    };
+    final pastDue =
+        openStatuses.contains(status) &&
+        when != null &&
+        when.isBefore(DateTime.now());
+
+    final IconData icon;
+    final Color color;
+    switch (status) {
+      case TaskStatus.completed:
+        icon = Icons.check_circle;
+        color = Colors.green;
+      case TaskStatus.rejected:
+        icon = Icons.do_not_disturb_on;
+        color = scheme.onSurfaceVariant;
+      case TaskStatus.missed:
+        icon = Icons.error;
+        color = scheme.error;
+      default:
+        if (pastDue) {
+          icon = Icons.error_outline;
+          color = scheme.error;
+        } else {
+          icon = Icons.circle_outlined;
+          color = scheme.outline;
+        }
+    }
+    // Completed and rejected are both closed — strike them through.
+    final closed =
+        status == TaskStatus.completed || status == TaskStatus.rejected;
+    final statusLabel = pastDue ? 'not answered' : status.name;
+    final alert = pastDue || status == TaskStatus.missed;
+
     return ListTile(
-      leading: Icon(
-        done ? Icons.check_circle : Icons.circle_outlined,
-        color: done ? Colors.green : scheme.outline,
-      ),
+      leading: Icon(icon, color: color),
       title: Text(
         task.title,
-        style: done
-            ? const TextStyle(decoration: TextDecoration.lineThrough)
+        style: closed
+            ? TextStyle(
+                decoration: TextDecoration.lineThrough,
+                color: scheme.onSurfaceVariant,
+              )
             : null,
       ),
       subtitle: Text(
         when == null
-            ? task.status.name
-            : '${DateFormat.jm().format(when)} · ${task.status.name}',
+            ? statusLabel
+            : '${DateFormat.jm().format(when)} · $statusLabel',
+        style: alert ? TextStyle(color: scheme.error) : null,
       ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
