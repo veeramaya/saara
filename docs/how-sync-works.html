@@ -1,0 +1,358 @@
+<title>Saara Sync — the CRDT / G-Set model</title>
+<style>
+  :root{
+    --bg:#f7f2ec; --surface:#fffdfb; --surface-2:#f1e8e0; --border:#e4d6cb;
+    --text:#241a15; --muted:#6f5f56; --faint:#9b8a80;
+    --accent:#c23d2a; --accent-soft:rgba(194,61,42,.10);
+    --keep:#2f8f63; --keep-soft:rgba(47,143,99,.12);
+    --lossy:#a9761c; --lossy-soft:rgba(169,118,28,.12);
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --maxw:50rem;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#16100e; --surface:#1f1613; --surface-2:#2a1e19; --border:#3a2b24;
+      --text:#ece3dd; --muted:#b3a099; --faint:#7d6b62;
+      --accent:#e2543f; --accent-soft:rgba(226,84,63,.13);
+      --keep:#5fbf8f; --keep-soft:rgba(95,191,143,.13);
+      --lossy:#d9a441; --lossy-soft:rgba(217,164,65,.13);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f7f2ec; --surface:#fffdfb; --surface-2:#f1e8e0; --border:#e4d6cb;
+    --text:#241a15; --muted:#6f5f56; --faint:#9b8a80;
+    --accent:#c23d2a; --accent-soft:rgba(194,61,42,.10);
+    --keep:#2f8f63; --keep-soft:rgba(47,143,99,.12);
+    --lossy:#a9761c; --lossy-soft:rgba(169,118,28,.12);
+  }
+  :root[data-theme="dark"]{
+    --bg:#16100e; --surface:#1f1613; --surface-2:#2a1e19; --border:#3a2b24;
+    --text:#ece3dd; --muted:#b3a099; --faint:#7d6b62;
+    --accent:#e2543f; --accent-soft:rgba(226,84,63,.13);
+    --keep:#5fbf8f; --keep-soft:rgba(95,191,143,.13);
+    --lossy:#d9a441; --lossy-soft:rgba(217,164,65,.13);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--font-sans); line-height:1.65;
+    font-size:clamp(16px,1.4vw,17.5px);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:clamp(1.4rem,4vw,3rem) clamp(1.1rem,4vw,1.6rem) 5rem}
+
+  .eyebrow{
+    font-family:var(--font-mono); font-size:.72rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--accent); font-weight:600;
+  }
+  h1{
+    font-size:clamp(2.1rem,7vw,3.5rem); line-height:1.02; letter-spacing:-.025em;
+    font-weight:800; margin:.5rem 0 0; text-wrap:balance;
+  }
+  .lead{
+    font-size:clamp(1.1rem,2.4vw,1.35rem); color:var(--muted);
+    margin:1.1rem 0 0; max-width:38ch; text-wrap:pretty;
+  }
+  h2{
+    font-size:clamp(1.35rem,3.4vw,1.7rem); letter-spacing:-.015em; line-height:1.15;
+    font-weight:750; margin:0 0 .2rem; text-wrap:balance;
+  }
+  h3{font-size:1.05rem; font-weight:700; margin:0 0 .35rem; letter-spacing:-.01em}
+  p{margin:.7rem 0}
+  section{margin-top:clamp(2.6rem,6vw,3.6rem)}
+  .kicker{font-family:var(--font-mono); font-size:.7rem; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); font-weight:600; margin-bottom:.5rem}
+  strong{font-weight:700; color:var(--text)}
+  a{color:var(--accent)}
+  .mono{font-family:var(--font-mono)}
+
+  /* hero formula motif */
+  .formula{
+    margin-top:2rem; padding:1rem 1.15rem; border:1px solid var(--border);
+    border-radius:12px; background:var(--surface);
+    font-family:var(--font-mono); font-size:clamp(.85rem,2.2vw,1.05rem);
+    color:var(--muted); overflow-x:auto; white-space:nowrap;
+  }
+  .formula b{color:var(--accent); font-weight:700}
+
+  /* property cards */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.9rem; margin-top:1.4rem}
+  .card{border:1px solid var(--border); border-radius:14px; padding:1.1rem 1.15rem; background:var(--surface)}
+  .card .f{font-family:var(--font-mono); color:var(--accent); font-size:1.15rem; font-weight:700; letter-spacing:.02em}
+  .card .n{margin:.55rem 0 .1rem; font-weight:700; font-size:.95rem}
+  .card .d{color:var(--muted); font-size:.88rem; line-height:1.5}
+
+  /* two-CRDT panels */
+  .panels{display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1.3rem}
+  @media (max-width:560px){.panels{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--border); border-radius:14px; padding:1.15rem 1.2rem; background:var(--surface); position:relative; overflow:hidden}
+  .panel::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px}
+  .panel.keep::before{background:var(--keep)}
+  .panel.lossy::before{background:var(--lossy)}
+  .tag{display:inline-flex; align-items:center; gap:.4rem; font-family:var(--font-mono); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; font-weight:700; padding:.2rem .5rem; border-radius:999px}
+  .tag.keep{color:var(--keep); background:var(--keep-soft)}
+  .tag.lossy{color:var(--lossy); background:var(--lossy-soft)}
+  .panel h3{margin-top:.6rem}
+  .panel p{font-size:.92rem; color:var(--muted); margin:.4rem 0 0}
+
+  /* code */
+  pre{margin:1.1rem 0 0; padding:1rem 1.1rem; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; overflow-x:auto}
+  code{font-family:var(--font-mono); font-size:.85rem; line-height:1.6}
+  pre code{color:var(--muted)}
+  pre .hl{color:var(--accent); font-weight:600}
+  p code,li code{font-family:var(--font-mono); font-size:.86em; background:var(--surface-2); border:1px solid var(--border); border-radius:5px; padding:.05em .35em; color:var(--text)}
+
+  /* interactive demo */
+  .demo{margin-top:1.4rem; border:1px solid var(--border); border-radius:16px; background:var(--surface); padding:1.2rem}
+  .devices{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
+  @media (max-width:560px){.devices{grid-template-columns:1fr}}
+  .device{border:1px dashed var(--border); border-radius:12px; padding:.9rem; background:var(--bg)}
+  .device .label{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); font-weight:600; display:flex; justify-content:space-between}
+  .bag{display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.7rem; min-height:2.2rem}
+  .chip{font-family:var(--font-mono); font-size:.82rem; font-weight:600; padding:.28rem .55rem; border-radius:8px; background:var(--accent-soft); color:var(--accent); border:1px solid transparent}
+  .chip.fresh{animation:pop .45s ease}
+  @keyframes pop{from{transform:scale(.6); opacity:0} to{transform:scale(1); opacity:1}}
+  .controls{display:flex; flex-wrap:wrap; gap:.55rem; margin-top:1.1rem; align-items:center}
+  button{font-family:var(--font-sans); font-size:.9rem; font-weight:600; color:#fff; background:var(--accent); border:none; border-radius:9px; padding:.55rem .95rem; cursor:pointer; transition:transform .1s ease, filter .15s ease}
+  button:hover{filter:brightness(1.07)}
+  button:active{transform:translateY(1px)}
+  button.ghost{background:transparent; color:var(--muted); border:1px solid var(--border)}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .status{margin-top:.9rem; font-size:.9rem; color:var(--muted); min-height:1.4rem}
+  .status b{color:var(--keep)}
+
+  /* gossip diagram */
+  .gossip{margin-top:1.3rem; display:flex; flex-direction:column; gap:.55rem}
+  .hop{display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; font-family:var(--font-mono); font-size:.82rem; padding:.65rem .8rem; border:1px solid var(--border); border-radius:10px; background:var(--surface)}
+  .node{font-weight:700; color:var(--text); background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.15rem .5rem}
+  .arrow{color:var(--accent); font-weight:700}
+  .hop .note{color:var(--muted); font-family:var(--font-sans); font-size:.86rem; margin-left:auto}
+
+  /* callout */
+  .callout{margin-top:1.3rem; border:1px solid var(--border); border-left:4px solid var(--accent); border-radius:12px; background:var(--surface); padding:1.1rem 1.2rem}
+  .callout p{margin:.35rem 0}
+  .callout p:first-child{margin-top:0}
+
+  /* want list */
+  .wants{list-style:none; padding:0; margin:1.2rem 0 0; display:grid; gap:.55rem}
+  .wants li{display:flex; gap:.7rem; align-items:baseline; padding:.7rem .9rem; border:1px solid var(--border); border-radius:10px; background:var(--surface)}
+  .wants .mark{font-family:var(--font-mono); font-weight:700; flex:none}
+  .wants .yes .mark{color:var(--keep)}
+  .wants .no .mark{color:var(--faint)}
+  .wants .no{opacity:.72}
+  .wants .t{font-size:.94rem}
+  .wants .t small{display:block; color:var(--muted); font-size:.85rem; margin-top:.15rem}
+
+  /* tldr */
+  .tldr{margin-top:1.3rem; border:1px solid var(--border); border-radius:14px; background:var(--surface-2); padding:1.15rem 1.3rem}
+  .tldr ul{margin:.3rem 0 0; padding-left:1.1rem}
+  .tldr li{margin:.4rem 0; font-size:.95rem}
+
+  footer{margin-top:4rem; padding-top:1.4rem; border-top:1px solid var(--border); color:var(--faint); font-size:.82rem; font-family:var(--font-mono); letter-spacing:.03em}
+
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Saara · Architecture note</div>
+    <h1>The ledger can't conflict.</h1>
+    <p class="lead">How Saara syncs across every device with no server in the middle — and why the math guarantees it agrees.</p>
+    <div class="formula">merge = <b>A ∪ B</b> &nbsp;·&nbsp; A ∪ B = B ∪ A &nbsp;·&nbsp; (A ∪ B) ∪ C = A ∪ (B ∪ C) &nbsp;·&nbsp; A ∪ A = A</div>
+  </header>
+
+  <section>
+    <div class="kicker">The one-line idea</div>
+    <h2>A bag of unique facts that only grows</h2>
+    <p>The ledger is a bag of facts you can only ever <em>add</em> to. Syncing is pouring two bags together and keeping one of each. Pour in any order, as many times as you like — you always end up with the same bag. No server decides who wins. Convergence is <strong>math, not coordination</strong>.</p>
+  </section>
+
+  <section>
+    <div class="kicker">Definition</div>
+    <h2>What a CRDT is</h2>
+    <p><strong>CRDT — Conflict-free Replicated Data Type.</strong> A data structure built so independent copies on different devices can be edited offline and then <strong>merged automatically, with no coordinator, always landing on the same result.</strong> No locks, no central authority picking a winner, no manual merge conflict.</p>
+  </section>
+
+  <section>
+    <div class="kicker">The simplest CRDT</div>
+    <h2>Grow-only set (G-Set)</h2>
+    <p>A set you can only add to, never remove. Merging two replicas is just their <strong>union</strong> — every element either side has seen. Union works flawlessly because of three algebraic properties:</p>
+    <div class="cards">
+      <div class="card">
+        <div class="f">A ∪ B = B ∪ A</div>
+        <div class="n">Commutative</div>
+        <div class="d">Sync order doesn't matter.</div>
+      </div>
+      <div class="card">
+        <div class="f">(A∪B)∪C</div>
+        <div class="n">Associative</div>
+        <div class="d">Any grouping of syncs is fine.</div>
+      </div>
+      <div class="card">
+        <div class="f">A ∪ A = A</div>
+        <div class="n">Idempotent</div>
+        <div class="d">Re-syncing changes nothing.</div>
+      </div>
+    </div>
+    <p style="margin-top:1.2rem">Any set of devices, merging in any order, any number of times → <strong>the same final set.</strong> That is the whole reason no server is needed.</p>
+  </section>
+
+  <section>
+    <div class="kicker">See it converge</div>
+    <h2>Two devices, any order, same result</h2>
+    <p>Each device holds some events. They overlap on <span class="mono">e2</span>. Merge them in whichever order you like — both bags end up identical, and merging again does nothing.</p>
+    <div class="demo">
+      <div class="devices">
+        <div class="device">
+          <div class="label"><span>Device A</span><span id="cntA">3 facts</span></div>
+          <div class="bag" id="bagA"></div>
+        </div>
+        <div class="device">
+          <div class="label"><span>Device B</span><span id="cntB">2 facts</span></div>
+          <div class="bag" id="bagB"></div>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="ab">Sync A → B</button>
+        <button id="ba">Sync B → A</button>
+        <button id="reset" class="ghost">Reset</button>
+      </div>
+      <div class="status" id="status">Two devices, different bags. Sync either way to see them agree.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">The real design</div>
+    <h2>Saara is two CRDTs, stacked</h2>
+    <div class="panels">
+      <div class="panel keep">
+        <span class="tag keep">● preserves</span>
+        <h3>The ledger → a G-Set</h3>
+        <p>Every <span class="mono">TaskTransition</span> has a unique id. Merge = insert the entries you don't already hold. It <strong>can never conflict and never loses an event.</strong> Your reliability score is a fold over this ledger — so every device that merged the same events computes the same numbers.</p>
+      </div>
+      <div class="panel lossy">
+        <span class="tag lossy">▲ resolves</span>
+        <h3>The row state → an LWW-Register</h3>
+        <p>The current row values (title, area, due date) use <strong>last-writer-wins by <span class="mono">updatedAt</span></strong>. Also a CRDT — always agrees — but <strong>lossy</strong>: two devices editing the same field concurrently keep only the newer edit.</p>
+      </div>
+    </div>
+    <pre><code>// ledger, append-only — the whole reason merging can't conflict
+<span class="hl">if (!await _exists(db.taskTransitions, e.id)) {</span>
+  await db.into(db.taskTransitions).insert(e);
+}</code></pre>
+    <p style="margin-top:1.1rem">Net effect: <strong>history + score are never lost</strong> (G-Set); <strong>field values always agree</strong> but a simultaneous same-field edit can drop the loser (LWW). Not a bug — two CRDT semantics doing their different jobs.</p>
+  </section>
+
+  <section>
+    <div class="kicker">Beyond two devices</div>
+    <h2>Events gossip transitively</h2>
+    <p>The transport (Wi-Fi QR sync) is pairwise — two devices at a time. But each device exports the <strong>entire ledger it holds</strong>, including events it learned from others. So facts spread across the whole fleet:</p>
+    <div class="gossip">
+      <div class="hop"><span class="node">Laptop 1</span><span class="arrow">↔</span><span class="node">Mobile 1</span><span class="note">Mobile 1 now holds Laptop 1's events</span></div>
+      <div class="hop"><span class="node">Mobile 1</span><span class="arrow">↔</span><span class="node">Laptop 2</span><span class="note">Laptop 2 gets Laptop 1's events too</span></div>
+      <div class="hop"><span class="node">Laptop 2</span><span class="arrow">↔</span><span class="node">Mobile 2</span><span class="note">Mobile 2 now holds everything</span></div>
+    </div>
+    <p style="margin-top:1.1rem">You don't need to pair every device with every other — just enough sync paths that events can reach everyone.</p>
+  </section>
+
+  <section>
+    <div class="kicker">Portability &amp; the honest edge</div>
+    <h2>The ledger is its own backup</h2>
+    <div class="callout">
+      <p>Switching devices isn't a "restore" — a new device just <strong>merges the ledger</strong> and folds the same history into the same state.</p>
+      <p>Because there's no server, the safety net is <strong>only as fresh as your last sync or export.</strong> A device lost or wiped before syncing its newest events has no cloud copy to fall back on.</p>
+      <p>The escape hatch is already built: the <strong>encrypted export file</strong> is a full ledger snapshot — drop one into a folder or share it to yourself for a portable, restore-anywhere backstop, without reintroducing a server.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Where it could go</div>
+    <h2>Serverless invites — blockchain's good half, not the chain</h2>
+    <p>Sharing an invite is just emitting a <strong>signed</strong> ledger event and getting it into another user's ledger. "Blockchain" bundles three things; Saara wants only two:</p>
+    <ul class="wants">
+      <li class="yes"><span class="mark">✓</span><span class="t">Signed, append-only, tamper-evident events<small>Integrity and provenance over any channel.</small></span></li>
+      <li class="yes"><span class="mark">✓</span><span class="t">Cryptographic identity without accounts<small>A per-user keypair — no server, no login.</small></span></li>
+      <li class="no"><span class="mark">✗</span><span class="t">Global consensus / ordering / anti-double-spend<small>Exists to stop double-spending a scarce token. A commitment isn't scarce — so you want a web of trust, not a chain.</small></span></li>
+    </ul>
+    <p style="margin-top:1.2rem">The real constraint is <strong>transport, not trust</strong>. An invite-as-signed-blob over any channel (WhatsApp, Signal, email) is truly serverless. Only <em>live</em> device-to-device over the internet hits NAT/firewalls and needs a minimal, blind rendezvous that sees only ciphertext.</p>
+    <p>The special part: signed events let a person carry a <strong>portable, verifiable reliability record</strong> — proof they kept their word that no server owns and no one can forge. Self-sovereign reputation — the teeth behind P-Integrity's "others own the mirror."</p>
+  </section>
+
+  <section>
+    <div class="kicker">TL;DR</div>
+    <div class="tldr">
+      <ul>
+        <li><strong>CRDT</strong> = merge without coordination, always converges.</li>
+        <li><strong>G-Set</strong> = add-only set, merge = union (commutative · associative · idempotent).</li>
+        <li>Saara's <strong>ledger is a G-Set</strong> → never conflicts, never loses history or scores.</li>
+        <li>Saara's <strong>row state is an LWW-Register</strong> → always agrees, may drop a concurrent field edit.</li>
+        <li>N devices converge; events gossip transitively over pairwise syncs.</li>
+        <li>Backup = "as good as your last sync/export"; the ledger is its own backup.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Saara · com.realmaya.saara · serverless ledger sync</footer>
+</div>
+
+<script>
+  (function(){
+    var UNIVERSE = {
+      e1:'e1', e2:'e2', e3:'e3', e4:'e4'
+    };
+    var initA = ['e1','e2','e3'];
+    var initB = ['e2','e4'];
+    var A = new Set(initA), B = new Set(initB);
+    var merges = 0;
+
+    var bagA = document.getElementById('bagA'),
+        bagB = document.getElementById('bagB'),
+        cntA = document.getElementById('cntA'),
+        cntB = document.getElementById('cntB'),
+        status = document.getElementById('status');
+
+    function order(set){ return Object.keys(UNIVERSE).filter(function(k){return set.has(k);}); }
+
+    function render(freshInto){
+      [[bagA,A,cntA],[bagB,B,cntB]].forEach(function(t){
+        var el=t[0], set=t[1], cnt=t[2];
+        el.innerHTML='';
+        order(set).forEach(function(k){
+          var c=document.createElement('span');
+          c.className='chip'+(freshInto===el?' fresh':'');
+          c.textContent=UNIVERSE[k];
+          el.appendChild(c);
+        });
+        cnt.textContent=set.size+' fact'+(set.size===1?'':'s');
+      });
+    }
+
+    function union(){ var u=new Set(A); B.forEach(function(x){u.add(x);}); return u; }
+
+    function sync(dir){
+      var before = A.size + B.size;
+      var u = union();
+      var beforeUnion = order(A.size>=B.size?A:B).length; // rough
+      var changed = (u.size!==A.size)||(u.size!==B.size);
+      A = new Set(u); B = new Set(u);
+      merges++;
+      var into = dir==='ab'?bagB:bagA;
+      render(into);
+      if(!changed){
+        status.innerHTML='Already merged — <b>nothing changed.</b> That’s idempotence: A ∪ A = A.';
+      } else {
+        status.innerHTML='Both devices now hold the <b>same '+u.size+' facts</b>. Order didn’t matter — try the other direction or sync again.';
+      }
+    }
+
+    document.getElementById('ab').addEventListener('click',function(){sync('ab');});
+    document.getElementById('ba').addEventListener('click',function(){sync('ba');});
+    document.getElementById('reset').addEventListener('click',function(){
+      A=new Set(initA); B=new Set(initB); merges=0; render();
+      status.textContent='Two devices, different bags. Sync either way to see them agree.';
+    });
+
+    render();
+  })();
+</script>
