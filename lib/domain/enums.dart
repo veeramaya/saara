@@ -72,6 +72,11 @@ enum TaskStatus {
   missed,
   rejected,
   rescheduled,
+  // §4 / P-Integrity: backing out of your OWN released commitment. Unlike
+  // `rejected` (declined / external — excluded from the score), a self-cancel is
+  // a broken word and counts against you. Appended last so stored indexes are
+  // untouched.
+  cancelled,
 }
 
 /// §3.3 meeting_provider

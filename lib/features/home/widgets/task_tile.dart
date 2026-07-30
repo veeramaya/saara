@@ -137,7 +137,15 @@ class TaskTile extends ConsumerWidget {
 
   Future<void> _disposition(BuildContext context, WidgetRef ref) async {
     final service = ref.read(taskServiceProvider);
-    final choice = await showModalBottomSheet<TaskStatus>(
+    final scheme = Theme.of(context).colorScheme;
+    // Only an event or a received invitation can fall away by the *other* side's
+    // hand — an external cancellation, excluded from your score. A plain task you
+    // own can be kept, moved, or broken — never externally cancelled (§4).
+    final external =
+        task.kind == TaskKind.event ||
+        task.source == TaskSource.gcalSync ||
+        task.source == TaskSource.shareTarget;
+    final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(
         child: Column(
@@ -146,37 +154,87 @@ class TaskTile extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.play_arrow),
               title: const Text('Start'),
-              onTap: () => Navigator.pop(context, TaskStatus.started),
+              onTap: () => Navigator.pop(context, 'start'),
             ),
             ListTile(
               leading: const Icon(Icons.check_circle_outline),
               title: const Text('Complete'),
-              onTap: () => Navigator.pop(context, TaskStatus.completed),
+              onTap: () => Navigator.pop(context, 'complete'),
             ),
             ListTile(
-              leading: const Icon(Icons.cancel_outlined),
-              title: const Text('Reject'),
-              onTap: () => Navigator.pop(context, TaskStatus.rejected),
+              leading: const Icon(Icons.event_repeat),
+              title: const Text('Reschedule'),
+              subtitle: const Text(
+                'Move it and re-commit — not counted either way',
+              ),
+              onTap: () => Navigator.pop(context, 'reschedule'),
             ),
+            ListTile(
+              leading: Icon(Icons.cancel_outlined, color: scheme.error),
+              title: const Text("Cancel — I'm not doing it"),
+              subtitle: const Text('Your word, broken — counts against you'),
+              onTap: () => Navigator.pop(context, 'cancel'),
+            ),
+            if (external)
+              ListTile(
+                leading: const Icon(Icons.event_busy_outlined),
+                title: const Text('No longer happening'),
+                subtitle: const Text(
+                  'Cancelled by the other side — not counted',
+                ),
+                onTap: () => Navigator.pop(context, 'external'),
+              ),
           ],
         ),
       ),
     );
     if (choice == null) return;
     switch (choice) {
-      case TaskStatus.started:
+      case 'start':
         await service.start(task);
-      case TaskStatus.completed:
+      case 'complete':
         await service.complete(task);
-      case TaskStatus.rejected:
-        await service.reject(task);
-      default:
-        break;
+      case 'reschedule':
+        if (!context.mounted) return;
+        final newStart = await _pickReschedule(context);
+        if (newStart == null) return;
+        await service.reschedule(task, newStart);
+      case 'cancel':
+        await service.cancel(task);
+      case 'external':
+        await service.reject(task, reason: 'no longer happening (external)');
     }
     ref.invalidate(tasksForDayProvider(day));
     ref.invalidate(tasksBetweenProvider); // calendar views
-    // Refresh the ledger so the live tile timer reads the new started time.
     ref.invalidate(taskTransitionsProvider(task.id));
+    ref.invalidate(allTasksProvider);
+    ref.invalidate(unscheduledTasksProvider);
+    ref.invalidate(areaScoresProvider);
+    ref.invalidate(reportSummaryProvider);
+  }
+
+  Future<DateTime?> _pickReschedule(BuildContext context) async {
+    final now = DateTime.now();
+    final base = task.scheduledStart ?? task.dueDate ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: base.isBefore(now) ? now : base,
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365 * 3)),
+      helpText: 'Reschedule to',
+    );
+    if (date == null || !context.mounted) return null;
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(base),
+    );
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      t?.hour ?? base.hour,
+      t?.minute ?? base.minute,
+    );
   }
 }
 

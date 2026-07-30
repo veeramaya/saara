@@ -29,7 +29,11 @@ bool _isPastDue(TaskStatus status, DateTime? due) =>
     case TaskStatus.completed:
       return (icon: Icons.check_circle, color: Colors.green);
     case TaskStatus.rejected:
+      // Declined / external — excluded from the score, so it reads neutral.
       return (icon: Icons.do_not_disturb_on, color: scheme.onSurfaceVariant);
+    case TaskStatus.cancelled:
+      // Backed out of your own word — a broken word, so it reads as such.
+      return (icon: Icons.cancel, color: scheme.error);
     case TaskStatus.missed:
       return (icon: Icons.error, color: scheme.error);
     default:
@@ -39,9 +43,11 @@ bool _isPastDue(TaskStatus status, DateTime? due) =>
   }
 }
 
-/// Completed and rejected are both closed outcomes — strike their titles.
+/// Completed, rejected and cancelled are all closed outcomes — strike titles.
 bool taskStatusClosed(TaskStatus status) =>
-    status == TaskStatus.completed || status == TaskStatus.rejected;
+    status == TaskStatus.completed ||
+    status == TaskStatus.rejected ||
+    status == TaskStatus.cancelled;
 
 /// A commitment whose moment passed with no answer reads as red — it's a live
 /// gap, not a neutral state.

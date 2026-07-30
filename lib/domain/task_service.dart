@@ -26,8 +26,17 @@ class TaskService {
   Future<void> reopen(Task task, {String? note}) =>
       _apply(task, TaskStatus.started, note: note ?? 'reopened');
 
+  /// §4 / P-Integrity: **decline** — you didn't take on the word, or it fell
+  /// away externally (an invite cancelled by its organiser). Excluded from the
+  /// score; not a broken word.
   Future<void> reject(Task task, {String? reason}) =>
       _apply(task, TaskStatus.rejected, note: reason);
+
+  /// §4 / P-Integrity: **cancel your own commitment** — you gave your word and
+  /// backed out. A broken word: it counts against you (unlike [reject]). The
+  /// note is kept in the ledger.
+  Future<void> cancel(Task task, {String? note}) =>
+      _apply(task, TaskStatus.cancelled, note: note);
 
   /// §4: only call from the evening review / morning brief with the user seeing
   /// it — `finalizedInReview` guards against silent auto-missing.

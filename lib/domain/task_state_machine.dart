@@ -80,6 +80,7 @@ class TaskStateMachine {
       TaskStatus.completed, // quick check-off shortcut
       TaskStatus.missed,
       TaskStatus.rejected,
+      TaskStatus.cancelled,
       TaskStatus.rescheduled,
     },
     TaskStatus.started: {
@@ -87,20 +88,23 @@ class TaskStateMachine {
       TaskStatus.completed,
       TaskStatus.missed,
       TaskStatus.rejected,
+      TaskStatus.cancelled,
       TaskStatus.rescheduled,
     },
     TaskStatus.inProgress: {
       TaskStatus.completed,
       TaskStatus.missed,
       TaskStatus.rejected,
+      TaskStatus.cancelled,
       TaskStatus.rescheduled,
     },
     // §4 completion is reversible — an accidental check-off (one tap on a tile)
     // must not be a one-way door. Reopening is *recorded* as a transition, so
     // the ledger stays honest and the score simply follows current state; the
-    // completion is never silently erased.
+    // completion is never silently erased. A cancel is reversible the same way.
     TaskStatus.completed: {TaskStatus.started},
     TaskStatus.missed: {TaskStatus.started},
+    TaskStatus.cancelled: {TaskStatus.started},
     TaskStatus.rejected: {},
     TaskStatus.rescheduled: {},
   };
@@ -186,6 +190,7 @@ class TaskStateMachine {
         return _simple(task, to, at, note);
 
       case TaskStatus.rejected:
+      case TaskStatus.cancelled:
       case TaskStatus.inProgress:
       case TaskStatus.created:
         return _simple(task, to, at, note);

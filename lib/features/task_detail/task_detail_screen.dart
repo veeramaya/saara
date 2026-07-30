@@ -627,14 +627,35 @@ class TaskDetailScreen extends ConsumerWidget {
             await run(() => service.reschedule(task, newStart));
           },
         ),
+        // Backing out of your own word — a broken word (counts against you).
         OutlinedButton.icon(
-          icon: const Icon(Icons.cancel_outlined),
-          label: const Text('Reject'),
+          icon: Icon(
+            Icons.cancel_outlined,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          label: const Text('Cancel'),
           onPressed: () async {
             final reason = await _askReason(context);
-            await run(() => service.reject(task, reason: reason));
+            await run(() => service.cancel(task, note: reason));
           },
         ),
+        // An event or received invite can fall away by the other side's hand —
+        // an external cancellation, excluded from the score.
+        if (task.kind == TaskKind.event ||
+            task.source == TaskSource.gcalSync ||
+            task.source == TaskSource.shareTarget)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.event_busy_outlined),
+            label: const Text('No longer happening'),
+            onPressed: () async {
+              await run(
+                () => service.reject(
+                  task,
+                  reason: 'no longer happening (external)',
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -793,7 +814,7 @@ class TaskDetailScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Reject'),
+            child: const Text('Confirm'),
           ),
         ],
       ),
@@ -1335,7 +1356,8 @@ class _ActionItemsSection extends ConsumerWidget {
         if (items.any(
           (t) =>
               t.status != TaskStatus.completed &&
-              t.status != TaskStatus.rejected,
+              t.status != TaskStatus.rejected &&
+              t.status != TaskStatus.cancelled,
         )) ...[
           const SizedBox(height: 8),
           SizedBox(
@@ -1872,7 +1894,8 @@ class _StatusLine extends StatelessWidget {
     final color = switch (task.status) {
       TaskStatus.completed => Colors.green,
       TaskStatus.missed => scheme.error,
-      TaskStatus.rejected => scheme.error,
+      TaskStatus.cancelled => scheme.error,
+      TaskStatus.rejected => scheme.onSurfaceVariant,
       TaskStatus.rescheduled => scheme.tertiary,
       _ => _pastDue ? scheme.error : scheme.primary,
     };

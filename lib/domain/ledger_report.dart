@@ -122,8 +122,11 @@ Map<String?, LedgerScore> foldByArea(
       case TaskStatus.completed:
         out[area] = current._add(kept: 1);
       case TaskStatus.missed:
+      case TaskStatus.cancelled:
+        // A no-show and backing out of your own word are both broken words.
         out[area] = current._add(broken: 1);
       case TaskStatus.rejected:
+        // Declined / external — you didn't break a word, so it's excluded.
         out[area] = current._add(declined: 1);
       default:
         break; // started / inProgress / rescheduled are steps, not outcomes
