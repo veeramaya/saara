@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
 import '../../domain/enums.dart';
+import '../common/task_status_icon.dart';
 import '../sync/sync_status_chip.dart';
 import '../../providers.dart';
 import '../common/top_menu.dart';
@@ -713,18 +714,17 @@ class _TaskRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final when = task.scheduledStart ?? task.dueDate;
-    final done = task.status == TaskStatus.completed;
     final isEvent = task.kind == TaskKind.event;
-    final color = switch (task.status) {
+    final eventColor = switch (task.status) {
       TaskStatus.completed => Colors.green,
       TaskStatus.missed => scheme.error,
-      TaskStatus.rejected => scheme.error,
-      _ => isEvent ? scheme.tertiary : scheme.primary,
+      TaskStatus.rejected => scheme.onSurfaceVariant,
+      _ => scheme.tertiary,
     };
     final bits = <String>[];
     if (task.publicationState == PublicationState.draft) bits.add('draft');
     if (when != null) bits.add(DateFormat('MMM d').format(when));
-    bits.add(task.status.name);
+    bits.add(taskStatusLabel(task.status, when));
     if (areaName != null) bits.add(areaName!);
     if (actionItems > 0) {
       bits.add('$actionItems action item${actionItems == 1 ? '' : 's'}');
@@ -750,17 +750,14 @@ class _TaskRow extends StatelessWidget {
       );
     }
     return ListTile(
-      leading: Icon(
-        isEvent
-            ? Icons.event
-            : (done ? Icons.check_circle : Icons.radio_button_unchecked),
-        color: color,
-      ),
+      leading: isEvent
+          ? Icon(Icons.event, color: eventColor)
+          : TaskStatusIcon(status: task.status, due: when),
       title: Text(
         task.title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: done
+        style: taskStatusClosed(task.status)
             ? const TextStyle(decoration: TextDecoration.lineThrough)
             : null,
       ),

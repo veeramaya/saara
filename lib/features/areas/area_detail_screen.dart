@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../domain/measurable_progress.dart';
+import '../common/task_status_icon.dart';
 import '../../providers.dart';
 import '../task_detail/task_detail_screen.dart';
 import 'add_result_screen.dart';
@@ -373,22 +374,18 @@ class _AreaTaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final when = task.scheduledStart ?? task.dueDate;
-    final done = task.status == TaskStatus.completed;
     return ListTile(
-      leading: Icon(
-        done ? Icons.check_circle : Icons.circle_outlined,
-        color: done ? Colors.green : Theme.of(context).colorScheme.outline,
-      ),
+      leading: TaskStatusIcon(status: task.status, due: when),
       title: Text(
         task.title,
-        style: done
+        style: taskStatusClosed(task.status)
             ? const TextStyle(decoration: TextDecoration.lineThrough)
             : null,
       ),
       subtitle: Text(
         [
           if (task.publicationState == PublicationState.draft) 'draft',
-          task.status.name,
+          taskStatusLabel(task.status, when),
           if (when != null) DateFormat.MMMd().format(when),
         ].join(' · '),
       ),

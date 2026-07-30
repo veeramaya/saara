@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../data/database.dart';
 import '../../../domain/enums.dart';
 import '../../../providers.dart';
+import '../../common/task_status_icon.dart';
 import '../../task_detail/task_detail_screen.dart';
 
 /// §20.1 task card in the Home timeline. One-tap complete; long-press for other
@@ -23,6 +24,7 @@ class TaskTile extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final time = task.scheduledStart ?? task.dueDate;
     final done = task.status == TaskStatus.completed;
+    final statusV = taskStatusVisual(task.status, time, scheme);
     final actionItems = task.kind == TaskKind.event
         ? (ref.watch(childTaskCountsProvider).valueOrNull ??
                   const {})[task.id] ??
@@ -32,14 +34,14 @@ class TaskTile extends ConsumerWidget {
     return Card(
       child: ListTile(
         leading: IconButton(
-          icon: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked),
-          color: done ? scheme.primary : scheme.outline,
+          icon: Icon(statusV.icon),
+          color: statusV.color,
           tooltip: done ? 'Completed' : 'Mark done',
           onPressed: done ? null : () => _complete(context, ref),
         ),
         title: Text(
           task.title,
-          style: done
+          style: taskStatusClosed(task.status)
               ? TextStyle(
                   decoration: TextDecoration.lineThrough,
                   color: scheme.onSurfaceVariant,

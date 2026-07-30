@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
+import '../common/task_status_icon.dart';
 import '../home/home_screen.dart' show AddTaskFab;
 import '../task_detail/task_detail_screen.dart';
 
@@ -215,9 +216,13 @@ class _CalendarTaskTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final when = task.scheduledStart ?? task.dueDate;
+    final v = taskStatusVisual(task.status, when, scheme);
+    final closed = taskStatusClosed(task.status);
+    final label = taskStatusLabel(task.status, when);
 
-    // Events render distinctly from tasks (§9) — a coloured time-block, like a
-    // calendar entry, vs a check-circle to-do.
+    // Events render distinctly from tasks (§9) — a coloured time-block, tinted by
+    // status so a cancelled (rejected) or missed event doesn't read like a live
+    // one still ahead.
     if (task.kind == TaskKind.event) {
       final end = when?.add(Duration(minutes: task.durationMin ?? 60));
       final range = when == null
@@ -225,21 +230,34 @@ class _CalendarTaskTile extends StatelessWidget {
           : end != null
           ? '${DateFormat.jm().format(when)} – ${DateFormat.jm().format(end)}'
           : DateFormat.jm().format(when);
+      final plainUpcoming =
+          task.status == TaskStatus.created &&
+          !taskStatusIsAlert(task.status, when);
+      final barColor = plainUpcoming ? scheme.tertiary : v.color;
       return ListTile(
         leading: Container(
           width: 6,
           height: 40,
           decoration: BoxDecoration(
-            color: scheme.tertiary,
+            color: barColor,
             borderRadius: BorderRadius.circular(3),
           ),
         ),
-        title: Text(task.title),
+        title: Text(
+          task.title,
+          style: closed
+              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              : null,
+        ),
         subtitle: Row(
           children: [
-            Icon(Icons.event, size: 13, color: scheme.tertiary),
+            Icon(Icons.event, size: 13, color: barColor),
             const SizedBox(width: 4),
-            Expanded(child: Text('$range · Event')),
+            Expanded(
+              child: Text(
+                plainUpcoming ? '$range · Event' : '$range · Event · $label',
+              ),
+            ),
           ],
         ),
         trailing: task.meetingLink != null
@@ -251,48 +269,8 @@ class _CalendarTaskTile extends StatelessWidget {
       );
     }
 
-    // Flag every disposition on the toggle, not just "completed" — a rejected,
-    // missed or past-due task must not read the same as one still ahead (§4).
-    final status = task.status;
-    const openStatuses = {
-      TaskStatus.created,
-      TaskStatus.started,
-      TaskStatus.inProgress,
-    };
-    final pastDue =
-        openStatuses.contains(status) &&
-        when != null &&
-        when.isBefore(DateTime.now());
-
-    final IconData icon;
-    final Color color;
-    switch (status) {
-      case TaskStatus.completed:
-        icon = Icons.check_circle;
-        color = Colors.green;
-      case TaskStatus.rejected:
-        icon = Icons.do_not_disturb_on;
-        color = scheme.onSurfaceVariant;
-      case TaskStatus.missed:
-        icon = Icons.error;
-        color = scheme.error;
-      default:
-        if (pastDue) {
-          icon = Icons.error_outline;
-          color = scheme.error;
-        } else {
-          icon = Icons.circle_outlined;
-          color = scheme.outline;
-        }
-    }
-    // Completed and rejected are both closed — strike them through.
-    final closed =
-        status == TaskStatus.completed || status == TaskStatus.rejected;
-    final statusLabel = pastDue ? 'not answered' : status.name;
-    final alert = pastDue || status == TaskStatus.missed;
-
     return ListTile(
-      leading: Icon(icon, color: color),
+      leading: TaskStatusIcon(status: task.status, due: when),
       title: Text(
         task.title,
         style: closed
@@ -303,10 +281,10 @@ class _CalendarTaskTile extends StatelessWidget {
             : null,
       ),
       subtitle: Text(
-        when == null
-            ? statusLabel
-            : '${DateFormat.jm().format(when)} · $statusLabel',
-        style: alert ? TextStyle(color: scheme.error) : null,
+        when == null ? label : '${DateFormat.jm().format(when)} · $label',
+        style: taskStatusIsAlert(task.status, when)
+            ? TextStyle(color: scheme.error)
+            : null,
       ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
