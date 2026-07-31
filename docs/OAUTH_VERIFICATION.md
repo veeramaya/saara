@@ -4,16 +4,29 @@ To move the OAuth consent screen from **Testing → Published** and pass Google'
 review. Saara requests **sensitive-only** scopes (no restricted/Drive), so this
 is the light path: brand review + a short demo video. No CASA assessment.
 
-## Consent screen — fields to fill (Google Cloud Console → OAuth consent screen)
+## ⚡ Do this FIRST (stops the weekly breakage today)
+
+In **Testing** status Google **expires refresh tokens after 7 days** — that's why
+sync dies for users about weekly. Fix it immediately:
+
+> Cloud Console → **APIs & Services → OAuth consent screen → Audience →
+> Publish App** (Testing → **In production**).
+
+This lifts the 7-day expiry at once. Users still see the "unverified app" screen
+(Advanced → Continue) and there's a 100-user cap **until** verification passes —
+but connections stop dying every 7 days. Then submit for verification (below).
+
+## Consent screen — fields to fill (use the PUBLIC saara.realmaya.com pages — realmaya.com is password-gated and reviewers can't load it)
 
 | Field | Value |
 |---|---|
 | App name | **Saara** |
 | User support email | veera@realmaya.com |
-| App logo | (upload the 512×512 Saara icon — optional but speeds brand review) |
-| Application home page | https://realmaya.com |
-| Privacy policy URL | https://realmaya.com/… (your live privacy page) |
-| Authorized domain | **realmaya.com** |
+| App logo | upload the **512×512 Saara icon** (`D:\Store_assets\saara-icon-512.png`) |
+| Application home page | **https://saara.realmaya.com** |
+| Privacy policy URL | **https://saara.realmaya.com/privacy.html** |
+| Terms of service URL | **https://saara.realmaya.com/terms.html** |
+| Authorized domain | **realmaya.com** — must be verified in Search Console (GoDaddy TXT) |
 | Developer contact email | veera@realmaya.com |
 | User type | **External**, then **Publish app** |
 
@@ -40,7 +53,7 @@ Record on a real device/emulator; narrate briefly. Show, in order:
 5. **Scopes in use — write** — create a task/event in Saara, Sync, then show it
    **appearing in Google Tasks / Google Calendar** (switch to the Google app or
    web to prove the round-trip).
-6. **Privacy** — show or state the privacy policy URL (realmaya.com).
+6. **Privacy** — show or state the privacy policy URL (saara.realmaya.com/privacy.html).
 
 Keep the OAuth consent screen fully visible for a few seconds — reviewers must
 see the exact scopes being granted. Upload the video (unlisted YouTube is fine)
