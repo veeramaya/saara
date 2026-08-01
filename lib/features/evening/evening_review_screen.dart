@@ -378,7 +378,8 @@ class _ReflectionFieldState extends ConsumerState<_ReflectionField> {
             ),
             const SizedBox(height: 2),
             Text(
-              'In a few words — how do you restore today? One line, that\'s all.',
+              'One honest line — that\'s all. The task-level detail already '
+              'lives in your notes and captures.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 10),
@@ -386,6 +387,7 @@ class _ReflectionFieldState extends ConsumerState<_ReflectionField> {
               controller: _controller,
               onChanged: _onChanged,
               maxLines: 2,
+              maxLength: 80,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 hintText: 'e.g. I let two slip; I owned it and I begin again.',

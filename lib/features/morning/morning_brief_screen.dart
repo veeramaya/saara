@@ -346,7 +346,8 @@ class _DeclarationFieldState extends ConsumerState<_DeclarationField> {
             ),
             const SizedBox(height: 2),
             Text(
-              'In your own words — who will you be today?',
+              'One short line — specific and yours. The measurable, '
+              'time-bound detail lives in your tasks.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 10),
@@ -354,10 +355,10 @@ class _DeclarationFieldState extends ConsumerState<_DeclarationField> {
               controller: _controller,
               onChanged: _onChanged,
               maxLines: 2,
+              maxLength: 80,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                hintText:
-                    'e.g. I lead with patience, and I finish what I\'ve avoided.',
+                hintText: 'e.g. Lead with patience; ship the proposal by 4pm.',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
