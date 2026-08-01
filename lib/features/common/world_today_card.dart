@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/festival_theme.dart';
 import '../../domain/holidays_india.dart';
 import '../../domain/world_days.dart';
 
@@ -25,7 +26,7 @@ class WorldTodayCard extends StatelessWidget {
     final String title;
     final String note;
     if (holiday != null) {
-      emoji = '🎉';
+      emoji = festivalTheme(holiday.name).emoji;
       label = 'Holiday · per Govt of India';
       title = holiday.name;
       note = holiday.tentative

@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
 import '../../domain/enums.dart';
+import '../../domain/festival_theme.dart';
 import '../../domain/holidays_india.dart';
 import '../../domain/world_days.dart';
 import '../areas/area_icons.dart' as ai;
@@ -41,6 +42,7 @@ class DayCardData {
     required this.total,
     required this.kept,
     required this.broken,
+    required this.isHoliday,
   });
 
   /// Build a card from the day's tasks and the user's areas, computing the
@@ -119,6 +121,7 @@ class DayCardData {
       total: tasks.length,
       kept: kept,
       broken: broken,
+      isHoliday: holiday != null,
     );
   }
 
@@ -132,6 +135,10 @@ class DayCardData {
   final int total;
   final int kept;
   final int broken;
+
+  /// True when the day is a gazetted holiday — the card takes on a light
+  /// festival accent.
+  final bool isHoliday;
 }
 
 class RitualCardScreen extends StatefulWidget {
@@ -432,6 +439,23 @@ class _DayFace extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
+                    if (data.isHoliday && data.world != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          festivalTheme(data.world!.title).emoji,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     Text(
                       DateFormat('d MMM').format(data.day),
                       style: TextStyle(color: muted, fontSize: 11),
@@ -520,7 +544,12 @@ class _DayFace extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('🌍', style: TextStyle(fontSize: 15)),
+              Text(
+                data.isHoliday
+                    ? festivalTheme(data.world!.title).emoji
+                    : '🌍',
+                style: const TextStyle(fontSize: 15),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(

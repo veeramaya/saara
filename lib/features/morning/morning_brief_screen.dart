@@ -10,6 +10,7 @@ import '../../providers.dart';
 import '../common/world_today_card.dart';
 import '../home/widgets/task_tile.dart';
 import '../share/ritual_card_screen.dart';
+import 'holiday_nudges.dart';
 
 /// §7.3 Morning brief — "Open your day". Today's plan, plus **yesterday's open
 /// items demanding a disposition** (reschedule/reject/missed — no silent
@@ -64,6 +65,7 @@ class MorningBriefScreen extends ConsumerWidget {
         padding: const EdgeInsets.only(bottom: 96),
         children: [
           const WorldTodayCard(),
+          const HolidayNudges(),
           tasksAsync.maybeWhen(
             data: (tasks) => _WhatsInStore(tasks: tasks),
             orElse: () => const SizedBox.shrink(),
