@@ -227,6 +227,12 @@ class AppSettings {
   Future<void> setRitualMandate(bool on) =>
       _write(_ritualMandate, on ? 'on' : 'off');
 
+  /// §7 The user's region, chosen explicitly (never detected — location stays
+  /// dropped). Selects which bundled Central-Government gazetted holiday list to
+  /// tap from. Defaults to India.
+  Future<String> ritualRegion() async => (await _read('ritual_region')) ?? 'IN';
+  Future<void> setRitualRegion(String code) => _write('ritual_region', code);
+
   /// §7.3 The morning **declaration** — the word you give for the day, in your
   /// own voice ("Today I lead with patience and finish what I've avoided").
   /// Saara empowers you to declare; this is that line. Keyed by date,

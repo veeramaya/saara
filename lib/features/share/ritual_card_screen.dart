@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
 import '../../domain/enums.dart';
+import '../../domain/holidays_india.dart';
 import '../../domain/world_days.dart';
 import '../areas/area_icons.dart' as ai;
 import 'share_channels.dart';
@@ -100,9 +101,16 @@ class DayCardData {
         )
         .length;
 
+    // Prefer a gazetted holiday for the world line (attributed), else a world
+    // observance. The holiday is context the recipient will recognise.
+    final holiday = holidayOn(day);
+    final world = holiday != null
+        ? WorldDay(holiday.name, 'A holiday, per the Govt of India list.')
+        : worldDayFor(day);
+
     return DayCardData(
       day: day,
-      world: worldDayFor(day),
+      world: world,
       declaration: declaration,
       restoration: restoration,
       closed: closed,
