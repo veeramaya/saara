@@ -22,3 +22,18 @@ const kGoogleScopes = <String>[
   'https://www.googleapis.com/auth/calendar.events',
   if (kDrivePickerEnabled) 'https://www.googleapis.com/auth/drive.readonly',
 ];
+
+/// §9 Saara's own **Desktop-app** OAuth client, bundled so desktop users sign in
+/// with one tap — no Cloud Console, no keys to paste. For an installed/Desktop
+/// client Google treats the id + secret as **non-confidential** and expects them
+/// shipped inside the app; the loopback + PKCE flow protects the code exchange
+/// (see desktop_google_auth.dart). Mobile uses the Android client instead.
+///
+/// Injected at build time via `--dart-define` so the secret never lives in the
+/// (public) source. Official desktop builds pass:
+///   --dart-define=G_DESKTOP_ID=[client id] --dart-define=G_DESKTOP_SECRET=[secret]
+/// Empty (e.g. a build without the defines) falls back to a user-supplied client.
+const String kGoogleDesktopClientId =
+    String.fromEnvironment('G_DESKTOP_ID', defaultValue: '');
+const String kGoogleDesktopClientSecret =
+    String.fromEnvironment('G_DESKTOP_SECRET', defaultValue: '');

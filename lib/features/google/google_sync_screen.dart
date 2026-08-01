@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/platform.dart';
 import '../../providers.dart';
 import '../../services/google/auto_sync.dart';
+import '../../services/google/google_config.dart';
 import '../../services/google/google_sync_service.dart';
 
 /// §9 Google Tasks sync UI: connect, import Google Tasks → Saara, push Saara
@@ -96,7 +97,9 @@ class _GoogleSyncScreenState extends ConsumerState<GoogleSyncScreen> {
           ),
           const SizedBox(height: 20),
           if (!_connected) ...[
-            if (isDesktop) ...[
+            // Only ask for a client id/secret when Saara has no bundled desktop
+            // client — normally desktop just signs in like mobile.
+            if (isDesktop && kGoogleDesktopClientId.isEmpty) ...[
               TextField(
                 controller: _clientId,
                 decoration: const InputDecoration(
@@ -234,12 +237,15 @@ class _GoogleSyncScreenState extends ConsumerState<GoogleSyncScreen> {
     try {
       final service = ref.read(googleSyncServiceProvider);
       if (isDesktop) {
-        // Save the user's own "Desktop app" OAuth client, then run the
-        // loopback + PKCE flow (opens the system browser).
-        await service.desktopAuth.saveClient(
-          clientId: _clientId.text.trim(),
-          clientSecret: _clientSecret.text.trim(),
-        );
+        // If the user typed their own client (advanced), save it; otherwise the
+        // bundled Saara desktop client is used. Then run the loopback + PKCE
+        // flow (opens the system browser).
+        if (kGoogleDesktopClientId.isEmpty) {
+          await service.desktopAuth.saveClient(
+            clientId: _clientId.text.trim(),
+            clientSecret: _clientSecret.text.trim(),
+          );
+        }
         final email = await service.connectDesktop();
         setState(() => _desktopEmail = email.isEmpty ? 'Connected' : email);
       } else {

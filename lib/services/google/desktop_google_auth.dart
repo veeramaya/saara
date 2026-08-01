@@ -8,6 +8,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import 'google_config.dart';
+
 /// §9 Google OAuth for **desktop**. `google_sign_in` has no Windows/Linux
 /// implementation, so desktop uses Google's documented *installed-app* flow:
 /// a loopback redirect to `127.0.0.1` + PKCE.
@@ -58,8 +60,23 @@ class DesktopGoogleAuth {
     );
   }
 
-  Future<String?> clientId() => _storage.read(key: _kClientId);
-  Future<String?> clientSecret() => _storage.read(key: _kClientSecret);
+  /// The user's own client if they set one (advanced), otherwise Saara's
+  /// bundled Desktop-app client so desktop connect works with no setup.
+  Future<String?> clientId() async {
+    final stored = await _storage.read(key: _kClientId);
+    if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+    return kGoogleDesktopClientId.trim().isNotEmpty
+        ? kGoogleDesktopClientId.trim()
+        : null;
+  }
+
+  Future<String?> clientSecret() async {
+    final stored = await _storage.read(key: _kClientSecret);
+    if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+    return kGoogleDesktopClientSecret.trim().isNotEmpty
+        ? kGoogleDesktopClientSecret.trim()
+        : null;
+  }
   Future<String?> connectedEmail() => _storage.read(key: _kEmail);
 
   Future<bool> get isConfigured async {
