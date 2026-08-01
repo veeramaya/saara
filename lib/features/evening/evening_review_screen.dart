@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
+import '../../domain/daily_quote.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
 import '../common/daily_quote_card.dart';
+import '../share/ritual_card_screen.dart';
 
 /// §7.4 Evening review — "Complete your day". One-tap disposition per remaining
 /// task (complete / reschedule / reject / mark missed). `missed` is finalized
@@ -30,7 +32,45 @@ class EveningReviewScreen extends ConsumerWidget {
     };
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Complete your day')),
+      appBar: AppBar(
+        title: const Text('Complete your day'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: 'Share to your listeners',
+            onPressed: () {
+              final tasks = tasksAsync.valueOrNull ?? const <Task>[];
+              final kept = tasks
+                  .where((t) => t.status == TaskStatus.completed)
+                  .length;
+              final broken = tasks
+                  .where(
+                    (t) =>
+                        t.status == TaskStatus.missed ||
+                        t.status == TaskStatus.cancelled,
+                  )
+                  .length;
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => RitualCardScreen(
+                    data: RitualShareData(
+                      morning: false,
+                      quote: quoteForDay(DateTime.now(), morning: false),
+                      day: day,
+                      headline: kept > 0
+                          ? 'Kept my word $kept time${kept == 1 ? '' : 's'} today.'
+                          : "A day's honest close.",
+                      detail: broken > 0
+                          ? 'Restoring $broken.'
+                          : null,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: tasksAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),

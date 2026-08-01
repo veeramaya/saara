@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
+import '../../domain/daily_quote.dart';
 import '../../providers.dart';
 import '../common/daily_quote_card.dart';
 import '../home/widgets/task_tile.dart';
+import '../share/ritual_card_screen.dart';
 
 /// §7.3 Morning brief — "Open your day". Today's plan, plus **yesterday's open
 /// items demanding a disposition** (reschedule/reject/missed — no silent
@@ -25,7 +27,37 @@ class MorningBriefScreen extends ConsumerWidget {
     final openAsync = ref.watch(openItemsBeforeProvider(day));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Open your day')),
+      appBar: AppBar(
+        title: const Text('Open your day'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: 'Share to your listeners',
+            onPressed: () {
+              final tasks = tasksAsync.valueOrNull ?? const <Task>[];
+              final count = tasks.length;
+              final sworn = tasks.where((t) => t.priority > 0).length;
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => RitualCardScreen(
+                    data: RitualShareData(
+                      morning: true,
+                      quote: quoteForDay(DateTime.now(), morning: true),
+                      day: day,
+                      headline: count == 0
+                          ? 'A clear day ahead.'
+                          : '$count commitment${count == 1 ? '' : 's'} today.',
+                      detail: sworn > 0
+                          ? '$sworn with my word on ${sworn == 1 ? 'it' : 'them'}.'
+                          : null,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
