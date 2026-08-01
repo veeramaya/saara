@@ -43,6 +43,7 @@ class DayCardData {
     required this.kept,
     required this.broken,
     required this.isHoliday,
+    required this.capturedAt,
   });
 
   /// Build a card from the day's tasks and the user's areas, computing the
@@ -122,6 +123,7 @@ class DayCardData {
       kept: kept,
       broken: broken,
       isHoliday: holiday != null,
+      capturedAt: DateTime.now(),
     );
   }
 
@@ -139,6 +141,12 @@ class DayCardData {
   /// True when the day is a gazetted holiday — the card takes on a light
   /// festival accent.
   final bool isHoliday;
+
+  /// The instant the facts were captured. The card is an honest point-in-time
+  /// snapshot: it counts **all** the day's tasks as they stood at this moment,
+  /// and says so — add more later and a fresh card carries a fresh stamp. This
+  /// is the integrity guard against a card drifting from the day it depicts.
+  final DateTime capturedAt;
 }
 
 class RitualCardScreen extends StatefulWidget {
@@ -192,7 +200,10 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
 
   String _messageText() {
     final date = DateFormat('d MMMM yyyy').format(_d.day);
-    final b = StringBuffer()..writeln('My day — $date')..writeln();
+    final stamp = DateFormat('h:mm a').format(_d.capturedAt);
+    final b = StringBuffer()
+      ..writeln('My day — $date (facts as of $stamp)')
+      ..writeln();
     if (_d.declaration != null && _d.declaration!.isNotEmpty) {
       b.writeln('🌅 Opening: “${_d.declaration}”');
     } else {
@@ -457,8 +468,9 @@ class _DayFace extends StatelessWidget {
                       const SizedBox(width: 8),
                     ],
                     Text(
-                      DateFormat('d MMM').format(data.day),
-                      style: TextStyle(color: muted, fontSize: 11),
+                      '${DateFormat('d MMM').format(data.day)}  ·  '
+                      'as of ${DateFormat('h:mm a').format(data.capturedAt)}',
+                      style: TextStyle(color: muted, fontSize: 10.5),
                     ),
                   ],
                 ),
