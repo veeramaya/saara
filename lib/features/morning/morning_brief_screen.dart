@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'dart:async';
+
 import '../../data/database.dart';
-import '../../domain/daily_quote.dart';
 import '../../providers.dart';
-import '../common/daily_quote_card.dart';
+import '../common/world_today_card.dart';
 import '../home/widgets/task_tile.dart';
 import '../share/ritual_card_screen.dart';
 
@@ -33,26 +34,24 @@ class MorningBriefScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: 'Share to your listeners',
-            onPressed: () {
+            onPressed: () async {
               final tasks = tasksAsync.valueOrNull ?? const <Task>[];
-              final count = tasks.length;
-              final sworn = tasks.where((t) => t.priority > 0).length;
-              final now = DateTime.now();
+              final areas =
+                  ref.read(activeAreasProvider).valueOrNull ?? const <Area>[];
+              final key = DateFormat('yyyy-MM-dd').format(day);
+              final declaration = await ref
+                  .read(appSettingsProvider)
+                  .ritualDeclaration(key);
+              if (!context.mounted) return;
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => RitualCardScreen(
-                    data: DayCardData(
+                    data: DayCardData.compute(
                       day: day,
-                      morningQuote: quoteForDay(now, morning: true),
-                      eveningQuote: quoteForDay(now, morning: false),
-                      declaration: count == 0
-                          ? 'A clear day ahead.'
-                          : '$count commitment${count == 1 ? '' : 's'} today.',
-                      declarationSub: sworn > 0
-                          ? '$sworn with my word on ${sworn == 1 ? 'it' : 'them'}.'
-                          : null,
-                      // The day isn't closed yet — the back face says so.
-                      closed: false,
+                      tasks: tasks,
+                      areas: areas,
+                      closed: false, // not closed yet — the back says so
+                      declaration: declaration,
                     ),
                   ),
                 ),
@@ -64,11 +63,12 @@ class MorningBriefScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
-          const DailyQuoteCard(morning: true),
+          const WorldTodayCard(),
           tasksAsync.maybeWhen(
             data: (tasks) => _WhatsInStore(tasks: tasks),
             orElse: () => const SizedBox.shrink(),
           ),
+          _DeclarationField(day: day),
           _SectionHeader(
             'Yesterday\'s open items',
             subtitle:
@@ -270,6 +270,96 @@ class _WhatsInStore extends StatelessWidget {
                     ),
                   ],
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// §7.3 "Give your word" in your own voice — the morning declaration. Saara
+/// empowers you to declare; this is that line. Inviting, optional, autosaved
+/// keyed by the day, and it rides onto the day's card.
+class _DeclarationField extends ConsumerStatefulWidget {
+  const _DeclarationField({required this.day});
+  final DateTime day;
+
+  @override
+  ConsumerState<_DeclarationField> createState() => _DeclarationFieldState();
+}
+
+class _DeclarationFieldState extends ConsumerState<_DeclarationField> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  String get _key => DateFormat('yyyy-MM-dd').format(widget.day);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final v = await ref.read(appSettingsProvider).ritualDeclaration(_key);
+    if (mounted && v != null && v.isNotEmpty) _controller.text = v;
+  }
+
+  void _onChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      ref.read(appSettingsProvider).setRitualDeclaration(_key, v);
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      color: scheme.primaryContainer.withValues(alpha: 0.4),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.front_hand_outlined, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Give your word for today',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'In your own words — who will you be today?',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _controller,
+              onChanged: _onChanged,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText:
+                    'e.g. I lead with patience, and I finish what I\'ve avoided.',
+                border: OutlineInputBorder(),
+                isDense: true,
               ),
             ),
           ],

@@ -6,10 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
-import '../../domain/daily_quote.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
-import '../common/daily_quote_card.dart';
+import '../common/world_today_card.dart';
 import '../share/ritual_card_screen.dart';
 
 /// §7.4 Evening review — "Complete your day". One-tap disposition per remaining
@@ -42,43 +41,23 @@ class EveningReviewScreen extends ConsumerWidget {
             tooltip: 'Share to your listeners',
             onPressed: () async {
               final tasks = tasksAsync.valueOrNull ?? const <Task>[];
-              final count = tasks.length;
-              final sworn = tasks.where((t) => t.priority > 0).length;
-              final kept = tasks
-                  .where((t) => t.status == TaskStatus.completed)
-                  .length;
-              final broken = tasks
-                  .where(
-                    (t) =>
-                        t.status == TaskStatus.missed ||
-                        t.status == TaskStatus.cancelled,
-                  )
-                  .length;
-              final now = DateTime.now();
+              final areas =
+                  ref.read(activeAreasProvider).valueOrNull ?? const <Area>[];
               final key = DateFormat('yyyy-MM-dd').format(day);
-              final words = await ref
-                  .read(appSettingsProvider)
-                  .ritualReflection(key);
+              final settings = ref.read(appSettingsProvider);
+              final declaration = await settings.ritualDeclaration(key);
+              final restoration = await settings.ritualReflection(key);
               if (!context.mounted) return;
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => RitualCardScreen(
-                    data: DayCardData(
+                    data: DayCardData.compute(
                       day: day,
-                      morningQuote: quoteForDay(now, morning: true),
-                      eveningQuote: quoteForDay(now, morning: false),
-                      declaration: count == 0
-                          ? 'A clear day.'
-                          : '$count commitment${count == 1 ? '' : 's'} today.',
-                      declarationSub: sworn > 0
-                          ? '$sworn with my word on ${sworn == 1 ? 'it' : 'them'}.'
-                          : null,
+                      tasks: tasks,
+                      areas: areas,
                       closed: true,
-                      honor: kept > 0
-                          ? 'Kept my word $kept time${kept == 1 ? '' : 's'} today.'
-                          : "A day's honest close.",
-                      restoring: broken > 0 ? 'Restoring $broken.' : null,
-                      restorationWords: words,
+                      declaration: declaration,
+                      restoration: restoration,
                     ),
                   ),
                 ),
@@ -113,7 +92,7 @@ class EveningReviewScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
-              const DailyQuoteCard(morning: false),
+              const WorldTodayCard(),
               if (kept > 0) _HonorCard(kept: kept),
               Padding(
                 padding: const EdgeInsets.all(16),

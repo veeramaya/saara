@@ -227,6 +227,15 @@ class AppSettings {
   Future<void> setRitualMandate(bool on) =>
       _write(_ritualMandate, on ? 'on' : 'off');
 
+  /// §7.3 The morning **declaration** — the word you give for the day, in your
+  /// own voice ("Today I lead with patience and finish what I've avoided").
+  /// Saara empowers you to declare; this is that line. Keyed by date,
+  /// device-local. Empty clears it.
+  Future<String?> ritualDeclaration(String dateKey) =>
+      _read('ritual_declaration_$dateKey');
+  Future<void> setRitualDeclaration(String dateKey, String text) =>
+      _writeOrClear('ritual_declaration_$dateKey', text);
+
   /// §7.4 A single line of restoration for the whole day — "in a few words, how
   /// do you restore today?" Deliberately **not** per-task: that granularity
   /// already lives in notes, remarks and captures. This is one honest line, as
@@ -234,9 +243,11 @@ class AppSettings {
   /// the ritual. Empty clears it.
   Future<String?> ritualReflection(String dateKey) =>
       _read('ritual_reflection_$dateKey');
-  Future<void> setRitualReflection(String dateKey, String text) {
+  Future<void> setRitualReflection(String dateKey, String text) =>
+      _writeOrClear('ritual_reflection_$dateKey', text);
+
+  Future<void> _writeOrClear(String key, String text) {
     final t = text.trim();
-    final key = 'ritual_reflection_$dateKey';
     if (t.isEmpty) {
       return (db.delete(db.settings)..where((s) => s.key.equals(key))).go();
     }

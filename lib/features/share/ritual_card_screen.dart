@@ -8,44 +8,122 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../domain/daily_quote.dart';
+import '../../data/database.dart';
+import '../../domain/enums.dart';
+import '../../domain/world_days.dart';
+import '../areas/area_icons.dart' as ai;
 import 'share_channels.dart';
 
-/// §13 One day, two faces. The **front** is the morning declaration — the word
-/// you gave; the **back** is the evening close — what you honored and how you
-/// restored. Sharing the close only makes sense with the declaration beside it,
-/// so the shared image carries both faces at once (§1 — the people you gave your
-/// word to are the mirror).
+/// A single area's tally for the day — name, colour, how many committed and how
+/// many kept. Drives the by-area chips (front) and recap (back).
+class AreaCount {
+  const AreaCount(this.name, this.color, this.total, this.kept);
+  final String name;
+  final Color color;
+  final int total;
+  final int kept;
+}
+
+/// §13 One day, two faces. The **front** is the morning declaration and the
+/// day's facts; the **back** is the close — what you honored and how you
+/// restored. Facts are absolute; the world line is context; the declaration and
+/// restoration are yours.
 class DayCardData {
   const DayCardData({
     required this.day,
-    required this.morningQuote,
-    required this.eveningQuote,
+    required this.world,
     required this.declaration,
-    this.declarationSub,
-    this.closed = false,
-    this.honor,
-    this.restoring,
-    this.restorationWords,
+    required this.restoration,
+    required this.closed,
+    required this.areas,
+    required this.heat,
+    required this.total,
+    required this.kept,
+    required this.broken,
   });
 
+  /// Build a card from the day's tasks and the user's areas, computing the
+  /// by-area tallies and the timeline heatmap. Both the morning and evening
+  /// share paths use this so the two faces always agree.
+  factory DayCardData.compute({
+    required DateTime day,
+    required List<Task> tasks,
+    required List<Area> areas,
+    required bool closed,
+    String? declaration,
+    String? restoration,
+  }) {
+    final areaById = {for (final a in areas) a.id: a};
+    final order = <String>[];
+    final agg = <String, List<int>>{}; // key -> [total, kept]
+    final names = <String, String>{};
+    final colors = <String, Color>{};
+    for (final t in tasks) {
+      final a = t.areaId == null ? null : areaById[t.areaId];
+      final key = a?.id ?? '_none';
+      if (!agg.containsKey(key)) {
+        agg[key] = [0, 0];
+        order.add(key);
+        names[key] = a?.displayName ?? 'Unfiled';
+        colors[key] = ai.areaColor(a?.color) ?? const Color(0xFF9AA0A6);
+      }
+      agg[key]![0]++;
+      if (t.status == TaskStatus.completed) agg[key]![1]++;
+    }
+    final areaCounts =
+        order
+            .map((k) => AreaCount(names[k]!, colors[k]!, agg[k]![0], agg[k]![1]))
+            .toList()
+          ..sort((a, b) => b.total.compareTo(a.total));
+
+    // Timeline heatmap: 10 buckets across the waking day (6:00 → midnight).
+    const buckets = 10;
+    const startMin = 6 * 60;
+    const span = 18 * 60;
+    final heat = List<int>.filled(buckets, 0);
+    for (final t in tasks) {
+      final when = t.scheduledStart ?? t.dueDate;
+      if (when == null) continue;
+      final mins = when.hour * 60 + when.minute;
+      var idx = ((mins - startMin) / (span / buckets)).floor();
+      if (idx < 0) idx = 0;
+      if (idx > buckets - 1) idx = buckets - 1;
+      heat[idx]++;
+    }
+
+    final kept = tasks.where((t) => t.status == TaskStatus.completed).length;
+    final broken = tasks
+        .where(
+          (t) =>
+              t.status == TaskStatus.missed ||
+              t.status == TaskStatus.cancelled,
+        )
+        .length;
+
+    return DayCardData(
+      day: day,
+      world: worldDayFor(day),
+      declaration: declaration,
+      restoration: restoration,
+      closed: closed,
+      areas: areaCounts,
+      heat: heat,
+      total: tasks.length,
+      kept: kept,
+      broken: broken,
+    );
+  }
+
   final DateTime day;
-  final DailyQuote morningQuote;
-  final DailyQuote eveningQuote;
-
-  /// Front face — "3 commitments today" and, if any, "1 with my word on it".
-  final String declaration;
-  final String? declarationSub;
-
-  /// Whether the day has been closed yet. When false (a morning share) the back
-  /// simply says the day is still open.
+  final WorldDay? world;
+  final String? declaration;
+  final String? restoration;
   final bool closed;
-
-  /// Back face — "Kept my word 5 times today", "Restoring 2", and the one line
-  /// of restoration the user wrote at close.
-  final String? honor;
-  final String? restoring;
-  final String? restorationWords;
+  final List<AreaCount> areas;
+  final List<int> heat;
+  final int total;
+  final int kept;
+  final int broken;
 }
 
 class RitualCardScreen extends StatefulWidget {
@@ -71,7 +149,6 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
       final image = await boundary.toImage(pixelRatio: 3);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (data == null) throw 'Could not render the card.';
-
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/saara-day.png');
       await file.writeAsBytes(data.buffer.asUint8List());
@@ -95,20 +172,24 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
     );
   }
 
-  /// The invitation that travels with the card: the declaration, the close, and
-  /// the restoration — first-person, naming the reader as a witness.
+  String _areaSummary() =>
+      _d.areas.take(4).map((a) => '${a.name} ${a.total}').join(' · ');
+
   String _messageText() {
-    final date = DateFormat('EEEE, d MMMM').format(_d.day);
-    final b = StringBuffer()
-      ..writeln('My day — $date')
-      ..writeln()
-      ..writeln('🌅 Opening: ${_d.declaration}');
-    if (_d.declarationSub != null) b.writeln('   ${_d.declarationSub}');
+    final date = DateFormat('d MMMM yyyy').format(_d.day);
+    final b = StringBuffer()..writeln('My day — $date')..writeln();
+    if (_d.declaration != null && _d.declaration!.isNotEmpty) {
+      b.writeln('🌅 Opening: “${_d.declaration}”');
+    } else {
+      b.writeln('🌅 Opening: ${_d.total} commitments today');
+    }
+    if (_d.areas.isNotEmpty) b.writeln('   ${_areaSummary()}');
+    if (_d.world != null) b.writeln('🌍 The world today: ${_d.world!.title}');
     if (_d.closed) {
-      b.writeln('🌙 Closing: ${_d.honor ?? "a day's honest close."}');
-      if (_d.restoring != null) b.writeln('   ${_d.restoring}');
-      if (_d.restorationWords != null && _d.restorationWords!.isNotEmpty) {
-        b.writeln('   “${_d.restorationWords}”');
+      b.writeln('🌙 Closing: Kept my word ${_d.kept} of ${_d.total}');
+      if (_d.broken > 0) b.writeln('   Restoring ${_d.broken}');
+      if (_d.restoration != null && _d.restoration!.isNotEmpty) {
+        b.writeln('   “${_d.restoration}”');
       }
     }
     b
@@ -169,18 +250,15 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'The card is shared as one image showing both faces — so the '
-                'close is always read with the morning it belongs to. Only '
-                "what's on the card is shared; your tasks, notes and scores "
-                'never are.',
+                'Shared as one image showing both faces — the close read with '
+                'the morning it belongs to. Only what\'s on the card is shared; '
+                'your task titles, notes and scores never are.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
-          // The share target: both faces stacked into one image. Kept in the
-          // tree (so it lays out and paints its own layer) but translated far
-          // off-screen so it never shows behind the preview.
+          // Off-screen capture target: both faces stacked into one image.
           Positioned(
             left: 0,
             top: 0,
@@ -198,8 +276,6 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
   }
 }
 
-/// A tap-to-flip card: [front] on one side, [back] on the other, with a 3D
-/// rotation about the Y axis.
 class _FlipCard extends StatefulWidget {
   const _FlipCard({required this.front, required this.back});
   final Widget front;
@@ -300,27 +376,26 @@ class _DayFace extends StatelessWidget {
             const Color(0xFFB9B4CC),
             const Color(0xFFE7C46B),
           );
-    final quote = open ? data.morningQuote : data.eveningQuote;
 
     return Container(
-      width: 360,
-      height: 340,
+      width: 380,
+      height: 466,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [top, bottom],
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Stack(
         children: [
           Positioned(
-            right: -24,
-            top: -18,
+            right: -28,
+            top: -24,
             child: Icon(
               open ? Icons.wb_sunny_rounded : Icons.nightlight_round,
-              size: 150,
+              size: 160,
               color: accent.withValues(alpha: 0.12),
             ),
           ),
@@ -343,7 +418,7 @@ class _DayFace extends StatelessWidget {
                       open ? 'OPENING MY DAY' : 'CLOSING MY DAY',
                       style: TextStyle(
                         color: accent,
-                        fontSize: 10.5,
+                        fontSize: 11,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1.5,
                       ),
@@ -351,29 +426,12 @@ class _DayFace extends StatelessWidget {
                     const Spacer(),
                     Text(
                       DateFormat('d MMM').format(data.day),
-                      style: TextStyle(color: muted, fontSize: 10.5),
+                      style: TextStyle(color: muted, fontSize: 11),
                     ),
                   ],
                 ),
-                const Spacer(),
-                ..._body(ink, muted),
                 const SizedBox(height: 14),
-                Text(
-                  '“${quote.text}”',
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: 13.5,
-                    height: 1.3,
-                    fontStyle: FontStyle.italic,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  '— ${quote.author}',
-                  style: TextStyle(color: muted, fontSize: 11),
-                ),
+                ...(open ? _front(ink, muted, accent) : _back(ink, muted)),
                 const Spacer(),
                 Divider(color: muted.withValues(alpha: 0.3), height: 1),
                 const SizedBox(height: 10),
@@ -411,68 +469,238 @@ class _DayFace extends StatelessWidget {
     );
   }
 
-  /// The middle block differs by face: the declaration on the front; honor,
-  /// restoring and the restoration line on the back (or "still open" if the day
-  /// hasn't been closed yet — a morning share).
-  List<Widget> _body(Color ink, Color muted) {
-    final headlineStyle = TextStyle(
-      color: ink,
-      fontSize: 26,
-      height: 1.15,
-      fontWeight: FontWeight.w800,
-      letterSpacing: -0.5,
-    );
-    final subStyle = TextStyle(
-      color: muted,
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
-    );
+  static const _label = TextStyle(
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    fontWeight: FontWeight.w800,
+  );
 
-    if (open) {
-      return [
-        Text(
-          data.declaration,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: headlineStyle,
-        ),
-        if (data.declarationSub != null) ...[
-          const SizedBox(height: 6),
-          Text(data.declarationSub!, style: subStyle),
-        ],
-      ];
-    }
-
-    if (!data.closed) {
-      return [
-        Text('The day is still open.', style: headlineStyle),
-        const SizedBox(height: 6),
-        Text("I'll close it tonight.", style: subStyle),
-      ];
-    }
-
+  List<Widget> _front(Color ink, Color muted, Color accent) {
+    final decl = data.declaration?.trim();
     return [
-      Text(
-        data.honor ?? "A day's honest close.",
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: headlineStyle,
-      ),
-      if (data.restoring != null) ...[
-        const SizedBox(height: 6),
-        Text(data.restoring!, style: subStyle),
-      ],
-      if (data.restorationWords != null &&
-          data.restorationWords!.isNotEmpty) ...[
-        const SizedBox(height: 8),
+      if (decl != null && decl.isNotEmpty) ...[
+        Text('MY DECLARATION', style: _label.copyWith(color: muted)),
+        const SizedBox(height: 5),
         Text(
-          '“${data.restorationWords}”',
-          maxLines: 2,
+          decl,
+          maxLines: 3,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: ink,
-            fontSize: 14,
-            height: 1.3,
+            fontSize: 20,
+            height: 1.28,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ] else
+        Text(
+          data.total == 0
+              ? 'A clear day ahead.'
+              : '${data.total} commitment${data.total == 1 ? '' : 's'} today.',
+          style: TextStyle(
+            color: ink,
+            fontSize: 26,
+            height: 1.15,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+      if (data.world != null) ...[
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('🌍', style: TextStyle(fontSize: 15)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data.world!.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: ink,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      data.world!.note,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      const SizedBox(height: 16),
+      Text(
+        'TODAY · ${data.total} COMMITMENT${data.total == 1 ? '' : 'S'}',
+        style: _label.copyWith(color: muted),
+      ),
+      if (data.areas.isNotEmpty) ...[
+        const SizedBox(height: 7),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final a in data.areas.take(4)) _chip(a, ink),
+          ],
+        ),
+      ],
+      const SizedBox(height: 12),
+      _heatmap(),
+    ];
+  }
+
+  Widget _chip(AreaCount a, Color ink) => Container(
+    padding: const EdgeInsets.fromLTRB(7, 3, 9, 3),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: a.color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${a.name} ${a.total}',
+          style: TextStyle(
+            color: ink,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _heatmap() {
+    final maxV = data.heat.fold<int>(0, math.max);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 24,
+          child: Row(
+            children: [
+              for (var i = 0; i < data.heat.length; i++) ...[
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: maxV == 0
+                            ? 0.12
+                            : (data.heat[i] == 0
+                                  ? 0.12
+                                  : 0.28 + 0.62 * (data.heat[i] / maxV)),
+                      ),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+                if (i != data.heat.length - 1) const SizedBox(width: 3),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        DefaultTextStyle(
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 9.5,
+          ),
+          child: const Row(
+            children: [
+              Text('6a'),
+              Spacer(),
+              Text('noon'),
+              Spacer(),
+              Text('6p'),
+              Spacer(),
+              Text('12a'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _back(Color ink, Color muted) {
+    if (!data.closed) {
+      return [
+        Text(
+          'The day is still open.',
+          style: TextStyle(
+            color: ink,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          "I'll close it tonight.",
+          style: TextStyle(color: muted, fontSize: 15),
+        ),
+      ];
+    }
+    final byArea = data.areas
+        .take(4)
+        .map((a) => '${a.name} ${a.kept}/${a.total}')
+        .join('  ·  ');
+    return [
+      Text('THE FACTS', style: _label.copyWith(color: muted)),
+      const SizedBox(height: 5),
+      Text(
+        'Kept my word ${data.kept} of ${data.total}',
+        style: TextStyle(
+          color: ink,
+          fontSize: 26,
+          height: 1.15,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.5,
+        ),
+      ),
+      if (byArea.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(byArea, style: TextStyle(color: muted, fontSize: 13)),
+      ],
+      if (data.broken > 0) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Restoring ${data.broken}',
+          style: TextStyle(color: muted, fontSize: 13),
+        ),
+      ],
+      if (data.restoration != null && data.restoration!.trim().isNotEmpty) ...[
+        const SizedBox(height: 16),
+        Text(
+          'ACKNOWLEDGE & RESTORE',
+          style: _label.copyWith(color: const Color(0xFFE7C46B)),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '“${data.restoration!.trim()}”',
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: ink,
+            fontSize: 16,
+            height: 1.34,
             fontStyle: FontStyle.italic,
           ),
         ),
