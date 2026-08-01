@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,8 +40,10 @@ class EveningReviewScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: 'Share to your listeners',
-            onPressed: () {
+            onPressed: () async {
               final tasks = tasksAsync.valueOrNull ?? const <Task>[];
+              final count = tasks.length;
+              final sworn = tasks.where((t) => t.priority > 0).length;
               final kept = tasks
                   .where((t) => t.status == TaskStatus.completed)
                   .length;
@@ -50,19 +54,31 @@ class EveningReviewScreen extends ConsumerWidget {
                         t.status == TaskStatus.cancelled,
                   )
                   .length;
+              final now = DateTime.now();
+              final key = DateFormat('yyyy-MM-dd').format(day);
+              final words = await ref
+                  .read(appSettingsProvider)
+                  .ritualReflection(key);
+              if (!context.mounted) return;
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => RitualCardScreen(
-                    data: RitualShareData(
-                      morning: false,
-                      quote: quoteForDay(DateTime.now(), morning: false),
+                    data: DayCardData(
                       day: day,
-                      headline: kept > 0
+                      morningQuote: quoteForDay(now, morning: true),
+                      eveningQuote: quoteForDay(now, morning: false),
+                      declaration: count == 0
+                          ? 'A clear day.'
+                          : '$count commitment${count == 1 ? '' : 's'} today.',
+                      declarationSub: sworn > 0
+                          ? '$sworn with my word on ${sworn == 1 ? 'it' : 'them'}.'
+                          : null,
+                      closed: true,
+                      honor: kept > 0
                           ? 'Kept my word $kept time${kept == 1 ? '' : 's'} today.'
                           : "A day's honest close.",
-                      detail: broken > 0
-                          ? 'Restoring $broken.'
-                          : null,
+                      restoring: broken > 0 ? 'Restoring $broken.' : null,
+                      restorationWords: words,
                     ),
                   ),
                 ),
@@ -127,6 +143,7 @@ class EveningReviewScreen extends ConsumerWidget {
                 ),
                 for (final t in broken) _RestoreCard(task: t, day: day),
               ],
+              _ReflectionField(day: day),
               const Divider(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -324,6 +341,85 @@ Widget _swornStar(BuildContext context) => Padding(
     color: Theme.of(context).colorScheme.primary,
   ),
 );
+
+/// §7.4 One honest line of restoration for the whole day — not per task (that's
+/// notes/captures), just a simple daily gesture. Autosaves as you type, keyed by
+/// the day, device-local. It rides along onto the shareable card.
+class _ReflectionField extends ConsumerStatefulWidget {
+  const _ReflectionField({required this.day});
+  final DateTime day;
+
+  @override
+  ConsumerState<_ReflectionField> createState() => _ReflectionFieldState();
+}
+
+class _ReflectionFieldState extends ConsumerState<_ReflectionField> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  String get _key => DateFormat('yyyy-MM-dd').format(widget.day);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final v = await ref.read(appSettingsProvider).ritualReflection(_key);
+    if (mounted && v != null && v.isNotEmpty) _controller.text = v;
+  }
+
+  void _onChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      ref.read(appSettingsProvider).setRitualReflection(_key, v);
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Restore your day',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'In a few words — how do you restore today? One line, that\'s all.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _controller,
+              onChanged: _onChanged,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'e.g. I let two slip; I owned it and I begin again.',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// §4 Honor — acknowledge what you kept today before anything else.
 class _HonorCard extends StatelessWidget {

@@ -227,6 +227,22 @@ class AppSettings {
   Future<void> setRitualMandate(bool on) =>
       _write(_ritualMandate, on ? 'on' : 'off');
 
+  /// §7.4 A single line of restoration for the whole day — "in a few words, how
+  /// do you restore today?" Deliberately **not** per-task: that granularity
+  /// already lives in notes, remarks and captures. This is one honest line, as
+  /// easy as brushing your teeth. Keyed by date; device-local like the rest of
+  /// the ritual. Empty clears it.
+  Future<String?> ritualReflection(String dateKey) =>
+      _read('ritual_reflection_$dateKey');
+  Future<void> setRitualReflection(String dateKey, String text) {
+    final t = text.trim();
+    final key = 'ritual_reflection_$dateKey';
+    if (t.isEmpty) {
+      return (db.delete(db.settings)..where((s) => s.key.equals(key))).go();
+    }
+    return _write(key, t);
+  }
+
   // ---- device registry (§9) ------------------------------------------------
   // Google can't tell you *which* of your devices made a task. The ledger can:
   // every entry carries the deviceId that wrote it. This registry maps those

@@ -37,19 +37,22 @@ class MorningBriefScreen extends ConsumerWidget {
               final tasks = tasksAsync.valueOrNull ?? const <Task>[];
               final count = tasks.length;
               final sworn = tasks.where((t) => t.priority > 0).length;
+              final now = DateTime.now();
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => RitualCardScreen(
-                    data: RitualShareData(
-                      morning: true,
-                      quote: quoteForDay(DateTime.now(), morning: true),
+                    data: DayCardData(
                       day: day,
-                      headline: count == 0
+                      morningQuote: quoteForDay(now, morning: true),
+                      eveningQuote: quoteForDay(now, morning: false),
+                      declaration: count == 0
                           ? 'A clear day ahead.'
                           : '$count commitment${count == 1 ? '' : 's'} today.',
-                      detail: sworn > 0
+                      declarationSub: sworn > 0
                           ? '$sworn with my word on ${sworn == 1 ? 'it' : 'them'}.'
                           : null,
+                      // The day isn't closed yet — the back face says so.
+                      closed: false,
                     ),
                   ),
                 ),
