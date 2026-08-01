@@ -38,10 +38,23 @@ class EveningReviewScreen extends ConsumerWidget {
           final remaining = tasks
               .where((t) => openStatuses.contains(t.status))
               .toList();
+          // Honor: what you kept today. Restore: the words you broke today —
+          // integrity is restoring them, not never breaking them (§4).
+          final kept = tasks
+              .where((t) => t.status == TaskStatus.completed)
+              .length;
+          final broken = tasks
+              .where(
+                (t) =>
+                    t.status == TaskStatus.missed ||
+                    t.status == TaskStatus.cancelled,
+              )
+              .toList();
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               const DailyQuoteCard(morning: false),
+              if (kept > 0) _HonorCard(kept: kept),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
@@ -52,6 +65,24 @@ class EveningReviewScreen extends ConsumerWidget {
                 ),
               ),
               for (final t in remaining) _DispositionCard(task: t, day: day),
+              if (broken.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Text(
+                    'Restore your word',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                  child: Text(
+                    "Integrity isn't never breaking your word — it's restoring "
+                    'it. Acknowledge it, make it right, and re-commit or let it '
+                    'go cleanly.',
+                  ),
+                ),
+                for (final t in broken) _RestoreCard(task: t, day: day),
+              ],
               const Divider(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -218,5 +249,162 @@ class _DispositionCard extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// §4 Honor — acknowledge what you kept today before anything else.
+class _HonorCard extends StatelessWidget {
+  const _HonorCard({required this.kept});
+  final int kept;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      color: scheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.emoji_events_outlined, color: scheme.onPrimaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'You kept your word $kept ${kept == 1 ? 'time' : 'times'} today.',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: scheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// §4 Restore — a word you broke today. Integrity is honoring your word: keep
+/// it, or as soon as you know you won't, acknowledge it, clean up the impact,
+/// and re-commit or let it go cleanly.
+class _RestoreCard extends ConsumerWidget {
+  const _RestoreCard({required this.task, required this.day});
+  final Task task;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, size: 18, color: scheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                task.title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.healing_outlined, size: 18),
+              label: const Text('Restore'),
+              onPressed: () => _restore(context, ref),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _restore(BuildContext context, WidgetRef ref) async {
+    final service = ref.read(taskServiceProvider);
+    final note = TextEditingController();
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Restore your word',
+              style: Theme.of(ctx).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '“${task.title}”',
+              style: Theme.of(ctx).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: note,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Acknowledge / clean it up (optional)',
+                hintText: 'e.g. messaged them, apologised, moved it',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              icon: const Icon(Icons.event_repeat),
+              label: const Text('Re-commit — give my word again'),
+              onPressed: () => Navigator.pop(ctx, 'recommit'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.done_all),
+              label: const Text('Release it cleanly — let it go'),
+              onPressed: () => Navigator.pop(ctx, 'release'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    final ack = note.text.trim().isEmpty ? 'restored' : note.text.trim();
+    if (choice == 'recommit') {
+      final fresh = await ref.read(taskDaoProvider).findById(task.id);
+      if (fresh == null) return;
+      // Reopen records the restoration in the ledger; then re-commit a time.
+      await service.reopen(fresh, note: 'Restored: $ack');
+      if (!context.mounted) return;
+      final when = await _pickWhen(context);
+      if (when != null) {
+        final again = await ref.read(taskDaoProvider).findById(task.id);
+        if (again != null) await service.reschedule(again, when);
+      }
+    } else {
+      // Release cleanly = an acknowledged decline, excluded from the score.
+      await service.reject(task, reason: 'Released honestly: $ack');
+    }
+    ref.invalidate(tasksForDayProvider(day));
+    ref.invalidate(reportSummaryProvider);
+    ref.invalidate(areaScoresProvider);
+  }
+
+  Future<DateTime?> _pickWhen(BuildContext context) async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (date == null) return null;
+    return DateTime(date.year, date.month, date.day, 9);
   }
 }
