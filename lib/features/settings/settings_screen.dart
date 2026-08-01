@@ -37,9 +37,32 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   TimeOfDay _morning = const TimeOfDay(hour: 7, minute: 0); // §7.3 default
   TimeOfDay _evening = const TimeOfDay(hour: 21, minute: 0); // §7.4 default
+  bool _mandate = false; // §7 rituals as a "don't move ahead" gate
   bool _exporting = false;
   bool _resetting = false;
   bool _ledgerBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRitual();
+  }
+
+  /// Load the saved ritual times and mandate so the UI shows what's actually
+  /// scheduled — before this, the pickers reset to defaults on every open even
+  /// though a different time was in force (§7.3/§7.4).
+  Future<void> _loadRitual() async {
+    final s = ref.read(appSettingsProvider);
+    final m = await s.ritualMorning();
+    final e = await s.ritualEvening();
+    final mandate = await s.ritualMandate();
+    if (!mounted) return;
+    setState(() {
+      _morning = TimeOfDay(hour: m.hour, minute: m.minute);
+      _evening = TimeOfDay(hour: e.hour, minute: e.minute);
+      _mandate = mandate;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +84,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: const Text('Complete your day'),
             trailing: Text(_evening.format(context)),
             onTap: () => _pickTime(isMorning: false),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.flag_outlined),
+            title: const Text('Make it a mandate'),
+            subtitle: const Text(
+              "Open the due ritual on launch and don't move ahead until it's "
+              'done',
+            ),
+            value: _mandate,
+            onChanged: (v) async {
+              setState(() => _mandate = v);
+              await ref.read(appSettingsProvider).setRitualMandate(v);
+            },
           ),
 
           const Divider(),
@@ -246,24 +282,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     });
 
-    // Reschedule the corresponding daily agent notification (§8).
+    // Persist the choice so it survives a restart and re-arms on launch
+    // (§7.3/§7.4), then reschedule the corresponding daily agent (§8).
+    final settings = ref.read(appSettingsProvider);
     final service = NotificationService.instance;
     await service.requestPermission();
     if (isMorning) {
+      await settings.setRitualMorning(picked.hour, picked.minute);
       await service.scheduleDailyAgent(
         id: NotificationService.morningId,
         hour: picked.hour,
         minute: picked.minute,
         title: 'Open your day',
         body: 'Your plan is ready. Commit to today.',
+        payload: NotificationService.morningPayload,
       );
     } else {
+      await settings.setRitualEvening(picked.hour, picked.minute);
       await service.scheduleDailyAgent(
         id: NotificationService.eveningId,
         hour: picked.hour,
         minute: picked.minute,
         title: 'Complete your day',
-        body: 'Give each task its disposition.',
+        body: 'Honor what you kept; restore what you broke.',
+        payload: NotificationService.eveningPayload,
       );
     }
   }

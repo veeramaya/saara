@@ -183,6 +183,50 @@ class AppSettings {
   Future<bool> coachSeen() async => (await _read(_coachSeen)) == 'yes';
   Future<void> setCoachSeen() => _write(_coachSeen, 'yes');
 
+  // ---- daily ritual (§7.3 / §7.4) ------------------------------------------
+  // When "Open your day" and "Close your day" fire, and whether they're a
+  // mandate ("without which you don't move ahead"). These are *device-local*
+  // preferences — they live in Settings (not synced) on purpose: a wake time
+  // and a gate belong to the device in your hand, not to every device at once
+  // across time zones. Stored as "H:M" (24-hour, parsed locale-independently).
+
+  static const _ritualMorning = 'ritual_morning';
+  static const _ritualEvening = 'ritual_evening';
+  static const _ritualMandate = 'ritual_mandate';
+
+  /// §7.3 morning ritual time (default 07:00).
+  Future<({int hour, int minute})> ritualMorning() =>
+      _readTime(_ritualMorning, 7, 0);
+  Future<void> setRitualMorning(int hour, int minute) =>
+      _write(_ritualMorning, '$hour:$minute');
+
+  /// §7.4 evening ritual time (default 21:00).
+  Future<({int hour, int minute})> ritualEvening() =>
+      _readTime(_ritualEvening, 21, 0);
+  Future<void> setRitualEvening(int hour, int minute) =>
+      _write(_ritualEvening, '$hour:$minute');
+
+  Future<({int hour, int minute})> _readTime(
+    String key,
+    int defHour,
+    int defMinute,
+  ) async {
+    final v = await _read(key);
+    if (v == null || v.isEmpty) return (hour: defHour, minute: defMinute);
+    final parts = v.split(':');
+    final h = int.tryParse(parts.first) ?? defHour;
+    final m = (parts.length > 1 ? int.tryParse(parts[1]) : null) ?? defMinute;
+    return (hour: h, minute: m);
+  }
+
+  /// §7 whether the rituals are a mandate — the app opens straight into the due
+  /// one and won't move ahead until it's done. Off by default; a deliberate
+  /// choice, never imposed.
+  Future<bool> ritualMandate() async =>
+      (await _read(_ritualMandate)) == 'on';
+  Future<void> setRitualMandate(bool on) =>
+      _write(_ritualMandate, on ? 'on' : 'off');
+
   // ---- device registry (§9) ------------------------------------------------
   // Google can't tell you *which* of your devices made a task. The ledger can:
   // every entry carries the deviceId that wrote it. This registry maps those

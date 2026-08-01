@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -17,6 +18,16 @@ class NotificationService {
 
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
+
+  /// The payload of a daily-agent notification the user tapped — 'morning' or
+  /// 'evening' — so the app can open straight into that ritual. The root shell
+  /// listens and clears it once handled. Also set on cold start when a tap
+  /// launched the app.
+  final ValueNotifier<String?> tappedRitual = ValueNotifier<String?>(null);
+
+  /// Payload strings carried on the two daily-agent notifications.
+  static const morningPayload = 'morning';
+  static const eveningPayload = 'evening';
 
   static const _dailyChannel = AndroidNotificationDetails(
     'saara_daily',
@@ -59,7 +70,20 @@ class NotificationService {
         requestSoundPermission: false,
       ),
     );
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (resp) {
+        final p = resp.payload;
+        if (p != null && p.isNotEmpty) tappedRitual.value = p;
+      },
+    );
+    // Cold start: the app was launched by tapping a notification. Surface its
+    // payload so the shell can route into the ritual after first frame.
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp ?? false) {
+      final p = launch!.notificationResponse?.payload;
+      if (p != null && p.isNotEmpty) tappedRitual.value = p;
+    }
     _ready = true;
   }
 
@@ -89,6 +113,7 @@ class NotificationService {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     if (!_supported) return;
     await _plugin.zonedSchedule(
@@ -101,6 +126,36 @@ class NotificationService {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time, // repeat daily
+      payload: payload,
+    );
+  }
+
+  /// Re-arm both daily-agent notifications at the given times. Called on launch
+  /// so the schedule survives a reboot/reinstall and always reflects Settings —
+  /// [scheduleDailyAgent] with `matchDateTimeComponents.time` replaces any prior
+  /// schedule for the same id, so this is safe to call every start.
+  Future<void> rescheduleDailyAgents({
+    required int morningHour,
+    required int morningMinute,
+    required int eveningHour,
+    required int eveningMinute,
+  }) async {
+    if (!_supported) return;
+    await scheduleDailyAgent(
+      id: morningId,
+      hour: morningHour,
+      minute: morningMinute,
+      title: 'Open your day',
+      body: 'Your plan is ready. Commit to today.',
+      payload: morningPayload,
+    );
+    await scheduleDailyAgent(
+      id: eveningId,
+      hour: eveningHour,
+      minute: eveningMinute,
+      title: 'Complete your day',
+      body: 'Honor what you kept; restore what you broke.',
+      payload: eveningPayload,
     );
   }
 

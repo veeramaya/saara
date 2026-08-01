@@ -3,17 +3,21 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import 'core/theme.dart';
 import 'features/agent/saara_agent_screen.dart';
 import 'features/areas/areas_screen.dart';
 import 'features/coach/coach_screen.dart';
+import 'features/evening/evening_review_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/morning/morning_brief_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/search/task_search_screen.dart';
 import 'providers.dart';
 import 'services/incoming_share.dart';
 import 'services/ledger_sync_service.dart';
+import 'services/notification_service.dart';
 
 /// Root widget. §20.1 bottom NavigationBar: Today · Tasks · Areas · Progress ·
 /// Saara. Tasks is the global searchable list (§7); Saara is the conversational
@@ -70,6 +74,9 @@ class _RootShellState extends ConsumerState<_RootShell>
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoSync());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoach());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkIncomingShare());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _armAndGateRituals());
+    // A daily-agent notification tapped while we're running opens its ritual.
+    NotificationService.instance.tappedRitual.addListener(_onRitualTapped);
     _syncTimer = Timer.periodic(
       const Duration(minutes: 10),
       (_) => _autoSync(),
@@ -100,8 +107,86 @@ class _RootShellState extends ConsumerState<_RootShell>
     _ledgerTimer?.cancel();
     _ledgerDebounce?.cancel();
     _ledgerWatch?.cancel();
+    NotificationService.instance.tappedRitual.removeListener(_onRitualTapped);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// §7.3/§7.4 On launch: re-arm both daily rituals from saved settings (so the
+  /// schedule survives a reboot/reinstall and reflects Settings without opening
+  /// them), then either route in from a notification tap or, if the user made
+  /// the rituals a mandate, open the one that's due and don't move ahead until
+  /// it's done.
+  Future<void> _armAndGateRituals() async {
+    if (!mounted) return;
+    final settings = ref.read(appSettingsProvider);
+    final morning = await settings.ritualMorning();
+    final evening = await settings.ritualEvening();
+    await NotificationService.instance.rescheduleDailyAgents(
+      morningHour: morning.hour,
+      morningMinute: morning.minute,
+      eveningHour: evening.hour,
+      eveningMinute: evening.minute,
+    );
+    // A tap that launched us wins — open exactly what they tapped, no gate.
+    if (_consumeTappedRitual()) return;
+    // Otherwise honor the mandate. Never gate a brand-new user mid-onboarding.
+    if (!await settings.ritualMandate()) return;
+    if (!await settings.coachSeen()) return;
+
+    final db = ref.read(appDatabaseProvider);
+    final now = DateTime.now();
+    final key = DateFormat('yyyy-MM-dd').format(now);
+    final log = await (db.select(
+      db.dayLogs,
+    )..where((d) => d.date.equals(key))).getSingleOrNull();
+    final morningAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      morning.hour,
+      morning.minute,
+    );
+    final eveningAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      evening.hour,
+      evening.minute,
+    );
+    if (now.isAfter(morningAt) && log?.committedAt == null && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const _MandatoryRitual(child: MorningBriefScreen()),
+        ),
+      );
+    }
+    if (now.isAfter(eveningAt) && log?.closedAt == null && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const _MandatoryRitual(child: EveningReviewScreen()),
+        ),
+      );
+    }
+  }
+
+  void _onRitualTapped() => _consumeTappedRitual();
+
+  /// Open the ritual named by a pending notification tap ('morning'/'evening'),
+  /// clearing it so it fires once. Returns true if it navigated.
+  bool _consumeTappedRitual() {
+    final p = NotificationService.instance.tappedRitual.value;
+    if (p == null || !mounted) return false;
+    NotificationService.instance.tappedRitual.value = null;
+    final screen = p == NotificationService.eveningPayload
+        ? const EveningReviewScreen()
+        : const MorningBriefScreen();
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => screen));
+    return true;
   }
 
   @override
@@ -293,6 +378,7 @@ class _RootShellState extends ConsumerState<_RootShell>
     SaaraAgentScreen(),
   ];
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -332,4 +418,17 @@ class _RootShellState extends ConsumerState<_RootShell>
       ),
     );
   }
+}
+
+/// §7 A ritual opened as a mandate — "without which you don't move ahead". The
+/// system back button is blocked so the only way forward is the ritual's own
+/// CTA (Commit to today / Close the day), which pops programmatically. There is
+/// always that exit, so it insists without trapping.
+class _MandatoryRitual extends StatelessWidget {
+  const _MandatoryRitual({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      PopScope(canPop: false, child: child);
 }
