@@ -35,21 +35,25 @@ class EveningReviewScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (tasks) {
-          final remaining = tasks
-              .where((t) => openStatuses.contains(t.status))
-              .toList();
+          // The words you gave your word to (§7.3) come first in every list, so
+          // the evening honors and restores them ahead of the rest.
+          final remaining =
+              tasks.where((t) => openStatuses.contains(t.status)).toList()
+                ..sort(_swornFirst);
           // Honor: what you kept today. Restore: the words you broke today —
           // integrity is restoring them, not never breaking them (§4).
           final kept = tasks
               .where((t) => t.status == TaskStatus.completed)
               .length;
-          final broken = tasks
-              .where(
-                (t) =>
-                    t.status == TaskStatus.missed ||
-                    t.status == TaskStatus.cancelled,
-              )
-              .toList();
+          final broken =
+              tasks
+                  .where(
+                    (t) =>
+                        t.status == TaskStatus.missed ||
+                        t.status == TaskStatus.cancelled,
+                  )
+                  .toList()
+                ..sort(_swornFirst);
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
@@ -166,7 +170,17 @@ class _DispositionCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(task.title, style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: [
+                if (task.priority > 0) _swornStar(context),
+                Expanded(
+                  child: Text(
+                    task.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -252,6 +266,25 @@ class _DispositionCard extends ConsumerWidget {
   }
 }
 
+/// Sworn commitments (§7.3 "give your word", stored on [Task.priority]) sort
+/// ahead of the rest, so the evening honors and restores them first.
+int _swornFirst(Task a, Task b) {
+  final sa = a.priority > 0, sb = b.priority > 0;
+  if (sa == sb) return 0;
+  return sa ? -1 : 1;
+}
+
+/// A small star shown beside a task in the evening lists when it was one of the
+/// words you gave your word to that morning.
+Widget _swornStar(BuildContext context) => Padding(
+  padding: const EdgeInsets.only(right: 6),
+  child: Icon(
+    Icons.star_rounded,
+    size: 18,
+    color: Theme.of(context).colorScheme.primary,
+  ),
+);
+
 /// §4 Honor — acknowledge what you kept today before anything else.
 class _HonorCard extends StatelessWidget {
   const _HonorCard({required this.kept});
@@ -304,6 +337,7 @@ class _RestoreCard extends ConsumerWidget {
           children: [
             Icon(Icons.error_outline, size: 18, color: scheme.error),
             const SizedBox(width: 8),
+            if (task.priority > 0) _swornStar(context),
             Expanded(
               child: Text(
                 task.title,

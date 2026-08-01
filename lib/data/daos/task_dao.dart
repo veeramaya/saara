@@ -720,6 +720,20 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
     );
   }
 
+  /// §7.3 "Give your word" — star (or unstar) a task as one of today's core
+  /// commitments. Stored on [Tasks.priority] (>0 = sworn) so it needs no new
+  /// column and rides the normal last-writer-wins sync. It's emphasis, not a
+  /// status change, so it writes no ledger entry — the word you gave *is* the
+  /// task; this just says which ones you're standing on today.
+  Future<void> setSworn(String taskId, bool sworn) {
+    return (update(tasks)..where((t) => t.id.equals(taskId))).write(
+      TasksCompanion(
+        priority: Value(sworn ? 1 : 0),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   /// Re-files a task. Callers should use `TaskService.correctArea`, which also
   /// posts the adjusting entry — moving the area without recording it would let
   /// history be rewritten quietly, which is exactly what the ledger forbids.

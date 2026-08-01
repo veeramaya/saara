@@ -53,18 +53,34 @@ class MorningBriefScreen extends ConsumerWidget {
           ),
           _SectionHeader(
             'Today',
-            subtitle: DateFormat.yMMMMEEEEd().format(day),
+            subtitle:
+                'Star the words you give your word to — they lead your day.',
           ),
           tasksAsync.when(
             loading: () => const _Loading(),
             error: (e, _) => _ErrorText(e),
-            data: (tasks) => tasks.isEmpty
-                ? const _AllClear('No tasks scheduled yet.')
-                : Column(
-                    children: [
-                      for (final t in tasks) TaskTile(task: t, day: day),
-                    ],
-                  ),
+            data: (tasks) {
+              if (tasks.isEmpty) {
+                return const _AllClear('No tasks scheduled yet.');
+              }
+              // Sworn commitments lead the day (§7.3 "give your word"), then by
+              // time; untimed tasks sink to the bottom.
+              final sorted = [...tasks]..sort((a, b) {
+                final sa = a.priority > 0, sb = b.priority > 0;
+                if (sa != sb) return sa ? -1 : 1;
+                final ta = a.scheduledStart ?? a.dueDate;
+                final tb = b.scheduledStart ?? b.dueDate;
+                if (ta == null && tb == null) return 0;
+                if (ta == null) return 1;
+                if (tb == null) return -1;
+                return ta.compareTo(tb);
+              });
+              return Column(
+                children: [
+                  for (final t in sorted) _TodayItem(task: t, day: day),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -106,6 +122,36 @@ class MorningBriefScreen extends ConsumerWidget {
   }
 }
 
+/// §7.3 "Give your word" — a star to the left of each of today's tasks. Tapping
+/// it marks the task as a core commitment you're standing on today (stored on
+/// [Task.priority]); it then leads the list and is honored/restored first at
+/// night.
+class _TodayItem extends ConsumerWidget {
+  const _TodayItem({required this.task, required this.day});
+  final Task task;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final sworn = task.priority > 0;
+    return Row(
+      children: [
+        IconButton(
+          icon: Icon(sworn ? Icons.star_rounded : Icons.star_border_rounded),
+          color: sworn ? scheme.primary : scheme.onSurfaceVariant,
+          tooltip: sworn ? 'You gave your word' : 'Give your word',
+          onPressed: () async {
+            await ref.read(taskDaoProvider).setSworn(task.id, !sworn);
+            ref.invalidate(tasksForDayProvider(day));
+          },
+        ),
+        Expanded(child: TaskTile(task: task, day: day)),
+      ],
+    );
+  }
+}
+
 /// §7.3 "What's in store" — the day opens forward-looking: how many words you
 /// have given for today and when the first timed one lands. A quiet, encouraging
 /// glance before you look back at yesterday.
@@ -118,6 +164,7 @@ class _WhatsInStore extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final count = tasks.length;
+    final sworn = tasks.where((t) => t.priority > 0).length;
     final timed =
         tasks.where((t) => t.scheduledStart != null).toList()
           ..sort((a, b) => a.scheduledStart!.compareTo(b.scheduledStart!));
@@ -134,6 +181,9 @@ class _WhatsInStore extends StatelessWidget {
                 '${DateFormat.jm().format(first.scheduledStart!)}: '
                 '${first.title}.';
     }
+    final swornLine = sworn > 0
+        ? "You've given your word to $sworn of them."
+        : null;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -163,6 +213,27 @@ class _WhatsInStore extends StatelessWidget {
                       color: scheme.onSecondaryContainer,
                     ),
                   ),
+                  if (swornLine != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.star_rounded,
+                          size: 15,
+                          color: scheme.onSecondaryContainer,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            swornLine,
+                            style: text.bodyMedium?.copyWith(
+                              color: scheme.onSecondaryContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
