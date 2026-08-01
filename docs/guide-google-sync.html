@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google Tasks &amp; Calendar sync — Saara Help</title>
+<meta name="description" content="Connect Saara to Google Tasks and Google Calendar for two-way sync, and what the 'Google hasn't verified this app' screen means and how to get past it.">
+<meta property="og:site_name" content="Saara">
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<nav class="top"><div class="navrow">
+  <a class="brand" href="index.html"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Saara</a>
+  <div class="navlinks"><a href="guide.html">All topics</a><a href="index.html#download">Download</a></div>
+</div></nav>
+
+<div class="wrap">
+  <a class="crumb" href="guide.html">&larr; All help topics</a>
+  <h1>Google Tasks &amp; Calendar</h1>
+  <p class="lead">Two-way, automatic sync. Your Saara <strong>tasks</strong> go to <strong>Google Tasks</strong>; your <strong>events</strong> go to <strong>Google Calendar</strong>. Everything goes device → Google directly.</p>
+
+  <h2>Connect</h2>
+  <p>Go to <span class="lbl">Settings &rarr; Google Tasks sync</span>.</p>
+  <ul>
+    <li><strong>Phone:</strong> tap <span class="lbl">Connect Google</span> → choose your account → approve.</li>
+    <li><strong>Desktop:</strong> paste a <span class="lbl">Google desktop client ID</span> + <span class="lbl">Client secret</span> (from Google Cloud Console → Credentials → OAuth client → Desktop app), then <span class="lbl">Connect Google (opens browser)</span>.</li>
+  </ul>
+
+  <div class="warn"><b>"Google hasn't verified this app"?</b><br>While Saara's Google verification is in progress you may see this screen when you connect. <b>It's expected — nothing is wrong.</b> Tap <b>Advanced</b>, then <b>Go to Saara (unsafe)</b>, then <b>Allow</b>. Your data still goes only device → Google — never through us. The warning disappears automatically once Google finishes verifying the app.</div>
+
+  <h2>Day to day</h2>
+  <ul>
+    <li><span class="lbl">Sync now</span> — pull &amp; push immediately.</li>
+    <li><span class="lbl">Auto-sync</span> — on open, and in the background (~30 min) while connected.</li>
+    <li><span class="lbl">Check for duplicate copies</span> — a one-time cleanup if an older version pushed repeat copies. It counts first and only removes Saara-created copies you confirm — items you didn't create in Saara are never touched.</li>
+    <li><span class="lbl">Disconnect</span> — stop syncing (your local data stays).</li>
+  </ul>
+  <div class="tip"><b>Two-way, last edit wins.</b> Creates, edits, completions and deletes flow both directions. If the same item is changed in two places, the most recent edit wins; deleting on one side deletes on the other.</div>
+
+  <div class="note"><b>Don't see your Saara task in Google Calendar?</b> A <em>task</em> lands in <strong>Google Tasks</strong>, which shows in the Google Calendar app's "Tasks" layer (or the separate Google Tasks app). A Saara <em>event</em> shows in <strong>Google Calendar</strong> as a normal event.</div>
+
+  <div class="pager">
+    <a href="guide-ai.html"><span class="k">Prev</span><b>&larr; Ask Saara</b></a>
+    <a class="next" href="guide-devices.html"><span class="k">Next</span><b>Sync your devices &rarr;</b></a>
+  </div>
+</div>
+
+<footer><div class="foot">
+  <p class="byline">A <b>Realmaya</b> product · Give your word. Keep it.</p>
+  <div class="footlinks"><a href="guide.html">All help topics</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="mailto:veera@realmaya.com">Contact</a></div>
+</div></footer>
+<script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</body>
+</html>

@@ -4,369 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Saara — Help &amp; User Guide</title>
-<meta name="description" content="The complete guide to Saara — how to capture tasks and events, keep your word, share reports and invites, connect Google Tasks &amp; Calendar, sync your devices over Wi-Fi, and use your own AI key. Give your word. Keep it.">
+<meta name="description" content="The Saara help centre — short, focused guides on capturing tasks, keeping your word, reporting, sharing, Google sync, syncing your devices, and using your own AI key.">
 <meta name="application-name" content="Saara">
 <meta property="og:site_name" content="Saara">
 <meta property="og:title" content="Saara - Help &amp; User Guide">
-<meta property="og:description" content="How to use Saara: capture, tasks &amp; events, reporting, sharing, Google sync, device-to-device sync, and your own AI key.">
-<style>
-  :root{--bg:#faf5ef;--surface:#fffdfb;--surface-2:#f2e9e1;--border:#e6d8cd;--text:#231913;--muted:#6d5c52;--faint:#9a8879;--accent:#c23d2a;--accent-2:#e2664a;--accent-soft:rgba(194,61,42,.09);--keep:#2f8f63;--gold:#b9862f;--font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--font-mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace;}
-  @media (prefers-color-scheme:dark){:root{--bg:#140e0c;--surface:#1e1613;--surface-2:#291d18;--border:#392a23;--text:#f0e7e0;--muted:#b6a49a;--faint:#7c6a60;--accent:#e2543f;--accent-2:#f47a5f;--accent-soft:rgba(226,84,63,.12);--keep:#5fbf8f;--gold:#d9a441;}}
-  :root[data-theme="light"]{--bg:#faf5ef;--surface:#fffdfb;--surface-2:#f2e9e1;--border:#e6d8cd;--text:#231913;--muted:#6d5c52;--faint:#9a8879;--accent:#c23d2a;--accent-2:#e2664a;--accent-soft:rgba(194,61,42,.09);--keep:#2f8f63;--gold:#b9862f;}
-  :root[data-theme="dark"]{--bg:#140e0c;--surface:#1e1613;--surface-2:#291d18;--border:#392a23;--text:#f0e7e0;--muted:#b6a49a;--faint:#7c6a60;--accent:#e2543f;--accent-2:#f47a5f;--accent-soft:rgba(226,84,63,.12);--keep:#5fbf8f;--gold:#d9a441;}
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.62;-webkit-font-smoothing:antialiased}
-  a{color:var(--accent)}
-  nav.top{border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);position:sticky;top:0;z-index:20}
-  .navrow{display:flex;align-items:center;justify-content:space-between;height:58px;max-width:76rem;margin:0 auto;padding:0 clamp(1.1rem,4vw,1.6rem)}
-  .brand{display:flex;align-items:center;gap:.55rem;font-weight:800;font-size:1.1rem;color:var(--text);text-decoration:none}
-  .mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(145deg,var(--accent-2),var(--accent));display:grid;place-items:center;color:#fff}
-  .mark svg{width:14px;height:14px}
-  .navlinks{display:flex;gap:1.3rem;font-size:.9rem}
-  .navlinks a{color:var(--muted);text-decoration:none}.navlinks a:hover{color:var(--text)}
-  .layout{max-width:76rem;margin:0 auto;padding:0 clamp(1.1rem,4vw,1.6rem);display:grid;grid-template-columns:16rem 1fr;gap:clamp(1.5rem,4vw,3rem);align-items:start}
-  @media(max-width:900px){.layout{grid-template-columns:1fr}}
-  aside{position:sticky;top:74px;align-self:start;max-height:calc(100vh - 90px);overflow-y:auto;padding:1.4rem 0;font-size:.9rem}
-  @media(max-width:900px){aside{position:static;max-height:none;border-bottom:1px solid var(--border);margin-bottom:1rem}}
-  aside .toc-h{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:700;margin:1.1rem 0 .4rem}
-  aside a{display:block;color:var(--muted);text-decoration:none;padding:.22rem 0;line-height:1.35}
-  aside a:hover{color:var(--accent)}
-  main{padding:1.6rem 0 4rem;min-width:0}
-  header.h{margin-bottom:1.4rem}
-  .eyebrow{font-family:var(--font-mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600}
-  h1{font-size:clamp(2rem,5vw,2.7rem);line-height:1.05;letter-spacing:-.02em;font-weight:850;margin:.5rem 0 0}
-  .lead{color:var(--muted);font-size:1.1rem;margin:.9rem 0 0}
-  section.doc{scroll-margin-top:74px;padding-top:1.6rem;margin-top:1.6rem;border-top:1px solid var(--border)}
-  section.doc:first-of-type{border-top:none;margin-top:.5rem}
-  h2{font-size:1.5rem;letter-spacing:-.015em;font-weight:800;margin:.2rem 0 .3rem}
-  h2 .n{color:var(--accent);font-family:var(--font-mono);font-size:1rem;margin-right:.5rem}
-  h3{font-size:1.08rem;font-weight:700;margin:1.5rem 0 .3rem;letter-spacing:-.01em}
-  p{margin:.6rem 0}
-  ul,ol{margin:.5rem 0;padding-left:1.2rem}
-  li{margin:.32rem 0}
-  strong{font-weight:700}
-  code,.lbl{font-family:var(--font-mono);font-size:.86em;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:.06em .38em;color:var(--text)}
-  .tip,.note,.warn{border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:10px;background:var(--surface);padding:.9rem 1.1rem;margin:1rem 0;font-size:.95rem}
-  .tip{border-left-color:var(--keep)}
-  .warn{border-left-color:var(--gold)}
-  .tip b,.note b,.warn b{font-weight:700}
-  table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.92rem;display:block;overflow-x:auto}
-  th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--border);vertical-align:top}
-  th{font-weight:700;color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.04em}
-  .recipes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-top:1.2rem}
-  .recipe{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:1.1rem 1.2rem}
-  .recipe h3{margin:.1rem 0 .4rem;font-size:1.02rem}
-  .recipe p{font-size:.92rem;color:var(--muted);margin:.3rem 0}
-  .recipe ol{font-size:.9rem;color:var(--text);margin:.5rem 0 0}
-  .pill{display:inline-block;font-family:var(--font-mono);font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.15rem .5rem;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-bottom:.5rem}
-  footer{border-top:1px solid var(--border);background:var(--surface);padding:2.2rem 0;margin-top:2rem}
-  .foot{display:flex;flex-wrap:wrap;gap:1rem 1.3rem;justify-content:space-between;align-items:center;max-width:76rem;margin:0 auto;padding:0 clamp(1.1rem,4vw,1.6rem)}
-  .footlinks{display:flex;flex-wrap:wrap;gap:1.1rem;font-size:.86rem}
-  .footlinks a{color:var(--muted);text-decoration:none}.footlinks a:hover{color:var(--text)}
-  .byline{font-size:.82rem;color:var(--faint)}.byline b{color:var(--muted)}
-</style>
+<meta property="og:description" content="Short, focused guides for every part of Saara.">
+<link rel="stylesheet" href="guide.css">
 </head>
 <body>
 <nav class="top"><div class="navrow">
   <a class="brand" href="index.html"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Saara</a>
-  <div class="navlinks"><a href="index.html">Home</a><a href="index.html#download">Download</a><a href="how-sync-works.html">How sync works</a></div>
+  <div class="navlinks"><a href="index.html">Home</a><a href="index.html#download">Download</a></div>
 </div></nav>
 
-<div class="layout">
-  <aside>
-    <div class="toc-h">User manual</div>
-    <a href="#start">1 · Getting started</a>
-    <a href="#capture">2 · Capturing tasks</a>
-    <a href="#model">3 · Tasks &amp; events in depth</a>
-    <a href="#agenda">4 · Run an event live</a>
-    <a href="#dispositions">5 · Keeping (&amp; breaking) your word</a>
-    <a href="#areas">6 · Areas</a>
-    <div class="toc-h">Reporting &amp; sharing</div>
-    <a href="#progress">7 · Progress &amp; reliability</a>
-    <a href="#sharing">8 · Sharing &amp; reports</a>
-    <a href="#listeners">9 · Committed listeners</a>
-    <div class="toc-h">Connect &amp; sync</div>
-    <a href="#ai">10 · Ask Saara &amp; your AI key</a>
-    <a href="#google">11 · Google Tasks &amp; Calendar</a>
-    <a href="#devices">12 · Sync your devices (Wi-Fi)</a>
-    <a href="#conflicts">13 · How conflicts are handled</a>
-    <div class="toc-h">Reference</div>
-    <a href="#settings">14 · Settings reference</a>
-    <a href="#privacy">15 · Privacy &amp; your data</a>
-    <a href="#recipes">16 · Use-case recipes</a>
-  </aside>
+<div class="wrap">
+  <span class="eyebrow" style="display:block;margin-top:1.6rem">Help centre</span>
+  <h1>How to use Saara</h1>
+  <p class="lead">Short, focused guides for every part of Saara. Each one is its own page — bookmark it, or open it from inside the app.</p>
 
-  <main>
-    <header class="h">
-      <span class="eyebrow">Help &amp; User Guide</span>
-      <h1>Using Saara</h1>
-      <p class="lead">Everything you need to give your word, keep it, and see your reliability grow. Saara is <strong>local-first</strong> — your data lives encrypted on your own device, and nothing goes through a server.</p>
-    </header>
-
-    <section class="doc" id="start">
-      <h2><span class="n">1</span>Getting started</h2>
-      <p>Saara has five tabs along the bottom:</p>
-      <ul>
-        <li><span class="lbl">Today</span> — your day, and the integrity circle. Zoom chips: <span class="lbl">Today</span> / <span class="lbl">Week</span> / <span class="lbl">2 weeks</span> / <span class="lbl">Month</span>.</li>
-        <li><span class="lbl">Tasks</span> — every commitment; search by title, notes, people or links, and filter by Type · Date · Area · Status · Source.</li>
-        <li><span class="lbl">Areas</span> — the parts of your life, each with its own score.</li>
-        <li><span class="lbl">Progress</span> — your reliability over time, on the ladder.</li>
-        <li><span class="lbl">Saara</span> — the assistant. Ask it to find things or do things (needs your AI key — see §10).</li>
-      </ul>
-      <h3>Two kinds of commitment</h3>
-      <p>A <strong>Task</strong> is a to-do (it syncs with Google Tasks). An <strong>Event</strong> is time-blocked (it syncs two-way with Google Calendar). Both can repeat.</p>
-      <h3>Draft vs. Release — the most important idea</h3>
-      <p>When you add something, the main button says <span class="lbl">Release</span>, with <span class="lbl">Save as draft</span> beneath it.</p>
-      <ul>
-        <li><strong>Draft</strong> = thinking out loud. It travels between <em>your</em> devices, but is <strong>not</strong> pushed to Google and does <strong>not</strong> count in your score.</li>
-        <li><strong>Release</strong> = giving your word. From then on it syncs everywhere and counts. Editing a released item shows the button as plain <span class="lbl">Save</span>.</li>
-      </ul>
-      <div class="tip"><b>Why it matters:</b> only what happens <em>after</em> you Release affects your reliability. Nothing counts against you while it's a draft.</div>
-    </section>
-
-    <section class="doc" id="capture">
-      <h2><span class="n">2</span>Capturing tasks — type, paste, talk, or snap</h2>
-      <p>Tap the <span class="lbl">+ Task</span> button. You'll get a menu of ways to capture:</p>
-      <table>
-        <tr><th>Option</th><th>What it does</th></tr>
-        <tr><td><span class="lbl">Type or talk a task</span></td><td>Opens the task form. Type, paste, or tap the <strong>mic</strong> to dictate. <span class="lbl">Parse</span> reads it with the built-in parser (no AI key needed); <span class="lbl">AI from text</span> structures a pasted message (e.g. a WhatsApp note) into fields (needs your key).</td></tr>
-        <tr><td><span class="lbl">From a screenshot / photo</span></td><td>Pick an image → choose <strong>Task</strong> or <strong>Event</strong> → Saara reads it into fields with AI. The original image stays on the task so you can check the extraction.</td></tr>
-        <tr><td><span class="lbl">Scan with camera</span></td><td>(Mobile) Same, live from the camera.</td></tr>
-        <tr><td><span class="lbl">Meeting summary → tasks</span></td><td>Photograph minutes-of-meeting; AI pulls out every action item for you to review and create.</td></tr>
-        <tr><td><span class="lbl">Tell Saara (voice/text)</span></td><td>Say it plainly — "add dentist Fri 4pm", "move gym", "mark done". Saara shows a confirm card before acting.</td></tr>
-        <tr><td><span class="lbl">Attach a link or file</span></td><td>Paste a Google Doc/Sheet/any URL, or attach an image.</td></tr>
-      </table>
-      <div class="note"><b>AI is optional.</b> The deterministic <span class="lbl">Parse</span> works with no key. The AI options (reading screenshots, structuring pasted text) use <em>your own</em> AI key — see §10. If a field looks uncertain, Saara highlights it: <em>"Some fields look uncertain — please review before saving."</em></div>
-    </section>
-
-    <section class="doc" id="model">
-      <h2><span class="n">3</span>Tasks &amp; events in depth</h2>
-      <p>A task or event can hold a lot — so nothing lives only in your head:</p>
-      <ul>
-        <li><strong>When</strong> — date + time. No date? It sits in an <span class="lbl">Unscheduled</span> section on Today until you give it a time.</li>
-        <li><strong>Duration</strong> — chips 15 / 30 / 45 / 60 / 90 / 120 min, or <span class="lbl">Set end…</span> for an explicit end (can cross midnight).</li>
-        <li><strong>Location</strong> — a venue/address. Turn on <span class="lbl">Notify me when I arrive</span> for an on-the-spot reminder (needs "allow location all the time").</li>
-        <li><strong>Meeting / join link</strong> — paste a Zoom/Teams/Meet link, or for a Google event tap <span class="lbl">Generate Google Meet link</span> (added on the next sync).</li>
-        <li><strong>Repeat</strong> — <span class="lbl">Once</span> / <span class="lbl">Daily</span> / <span class="lbl">Mon–Fri</span> / <span class="lbl">Mon–Sat</span> / <span class="lbl">Weekly</span> / <span class="lbl">Monthly</span>, or pick specific weekdays. Set an <span class="lbl">Ends</span> date if you like.</li>
-        <li><strong>Area</strong> — which part of life it belongs to (keeps your score accurate).</li>
-        <li><strong>People</strong> — add participants from contacts; later, <strong>Call</strong> or <strong>WhatsApp</strong> them straight from the task. Numbers stay on your device.</li>
-        <li><strong>Reminder</strong> — <span class="lbl">Notify me 15 min before it starts</span>.</li>
-        <li><strong>Notes</strong> and <strong>attachments</strong> — free text, a document link, or an image.</li>
-      </ul>
-      <p>Open any task to see a live <strong>timer</strong> while it's running, its <strong>provenance</strong> ("Added in Saara / From Google · synced 8m ago"), and a full <strong>History (integrity ledger)</strong> — every step recorded, never rewritten.</p>
-    </section>
-
-    <section class="doc" id="agenda">
-      <h2><span class="n">4</span>Run an event live — the agenda</h2>
-      <p>An event isn't one checkbox — it's a sequence you perform. On an event, the <span class="lbl">Action items</span> section lets you build a run-of-show:</p>
-      <ul>
-        <li><span class="lbl">Add task</span> — give it a title, a <strong>start time</strong>, and a duration. Each new item pre-fills to the end of the last, so steps chain back-to-back (e.g. "2:00–2:15 · 15 min").</li>
-        <li><span class="lbl">From notes</span> — photograph your agenda notes and let AI turn each line into a timed item.</li>
-        <li><span class="lbl">Start agenda</span> — the hands-free runner: the current step auto-starts, a big timer counts down (turns red when you run over), your <strong>speaker notes</strong> show for that segment, and <span class="lbl">Up next</span> previews the next. Tap <span class="lbl">Complete &amp; next</span> as you go.</li>
-      </ul>
-      <p>At the end you get an <strong>Event report</strong>: completed X of Y, planned-vs-actual timing per item, and optional AI insights. <span class="lbl">Duplicate to another date</span> clones the whole run-of-show, shifted to a new day.</p>
-    </section>
-
-    <section class="doc" id="dispositions">
-      <h2><span class="n">5</span>Keeping — and breaking — your word</h2>
-      <p>Every released commitment ends in an honest disposition. From a task you'll see:</p>
-      <table>
-        <tr><th>Action</th><th>Meaning</th><th>Score</th></tr>
-        <tr><td><span class="lbl">Mark complete</span></td><td>You kept it.</td><td style="color:var(--keep)">Kept +1</td></tr>
-        <tr><td><span class="lbl">Reschedule</span></td><td>Move it and re-commit.</td><td>Not counted either way</td></tr>
-        <tr><td><span class="lbl">Cancel</span></td><td>Backing out of your <em>own</em> released word.</td><td style="color:var(--accent)">Broken (counts against you)</td></tr>
-        <tr><td><span class="lbl">No longer happening</span></td><td>An <em>external</em> cancellation (event/invite dropped by the other side).</td><td>Excluded — not counted</td></tr>
-        <tr><td>Missed (in the evening review)</td><td>A no-show.</td><td style="color:var(--accent)">Broken</td></tr>
-        <tr><td>Rejected / Declined</td><td>You said no, clearly.</td><td>Excluded — not counted</td></tr>
-      </table>
-      <div class="tip"><b>Saara never marks a miss on its own.</b> A commitment whose time has passed shows as <em>"not answered"</em> until <em>you</em> give it a disposition — usually in the evening review ("Complete your day"). Saying "no" is a complete, honest answer; only silence is the failure.</div>
-      <p>Marked something by mistake? <span class="lbl">Reopen</span> puts it back — and that's recorded too. The ledger stays honest either way.</p>
-    </section>
-
-    <section class="doc" id="areas">
-      <h2><span class="n">6</span>Areas</h2>
-      <p>Group commitments into the areas that make a whole life. Saara starts with <strong>Health, Exercise, Career, Finance, Relationships, Leisure</strong>. Tap <span class="lbl">Add area</span> (up to 10) to add your own — name it, pick an icon and colour. Each area carries its own reliability, and the Progress wheel shows where you're strong and where you're thin.</p>
-    </section>
-
-    <section class="doc" id="progress">
-      <h2><span class="n">7</span>Progress &amp; reliability</h2>
-      <p>The <span class="lbl">Progress</span> screen is your training log. Your score is simple and honest: <strong>kept ÷ committed</strong>.</p>
-      <ul>
-        <li><strong>Integrity across areas</strong> — a radar wheel; each area's fill = its score. Tap a wedge to drill in.</li>
-        <li><strong>Reliability over time</strong> — Today / This week / This month / All-time, each with its % and your <strong>ladder level</strong>.</li>
-        <li><strong>On time</strong> — a separate timeliness measure. A kept word that was late is <em>still kept</em> — timeliness is its own path, never a mark against the score.</li>
-      </ul>
-      <h3>The reliability ladder</h3>
-      <table>
-        <tr><th>Level</th><th>Up to</th><th></th></tr>
-        <tr><td>Beginner</td><td>10%</td><td>Your word isn't a habit yet.</td></tr>
-        <tr><td>Learner</td><td>30%</td><td>Building the muscle.</td></tr>
-        <tr><td>Amateur</td><td>50%</td><td>Consistency wavers.</td></tr>
-        <tr><td>Professional</td><td>70%</td><td>Dependable more often than not.</td></tr>
-        <tr><td>Champion</td><td>85%</td><td>Highly reliable.</td></tr>
-        <tr><td style="color:var(--gold)">Masterful</td><td>100%</td><td>Your word is your bond.</td></tr>
-      </table>
-      <div class="note"><b>A path, not a scorecard.</b> The number is a compass, not a verdict — integrity is trained, not achieved. The system owns the facts (did it happen, when); you own the judgment (how well); the people you gave your word to are the mirror.</div>
-    </section>
-
-    <section class="doc" id="sharing">
-      <h2><span class="n">8</span>Sharing &amp; reports</h2>
-      <h3>Share as a card (invites)</h3>
-      <p>From any task/event, <span class="lbl">Share as card</span> makes a beautiful branded card themed to its area. Pick <span class="lbl">Brand</span> / <span class="lbl">Light</span> / <span class="lbl">Dark</span>, optionally <span class="lbl">Add a line with AI</span>, then <span class="lbl">Share card</span> (image + tappable details) or <span class="lbl">Share as text only</span> — on WhatsApp, Gmail, anywhere. Only the title, time, place and links are shared — your notes and scores never leave.</p>
-      <h3>Reports</h3>
-      <ul>
-        <li><strong>Event report</strong> — <span class="lbl">Share report</span> (text) or <span class="lbl">Export as file</span> (a re-importable Markdown file).</li>
-        <li><strong>Export all my data</strong> (Settings) — a <span class="lbl">.zip</span> of every task, area and capture, wherever you choose to put it.</li>
-      </ul>
-    </section>
-
-    <section class="doc" id="listeners">
-      <h2><span class="n">9</span>Committed listeners</h2>
-      <p>Integrity is relational — a promise isn't fully kept until it lands with the person you gave it to. Add a <strong>committed listener</strong> (with their consent), choose how reports reach them (WhatsApp / email / share sheet), the scope (all areas or one), and how often. Each period they rate how reliably you kept your word, and Saara compares it to your own score and suggests where to close the gap.</p>
-    </section>
-
-    <section class="doc" id="ai">
-      <h2><span class="n">10</span>Ask Saara &amp; your AI key (bring your own)</h2>
-      <p>The <span class="lbl">Saara</span> tab understands plain language — <em>"What did I commit with the coaches?"</em> to find, or <em>"Gym every Monday 6am"</em> to create. It always shows a <strong>Confirm</strong> card before it acts.</p>
-      <h3>Set up your key</h3>
-      <p>Settings → <span class="lbl">Saara AI (your key)</span>. Your key is stored only in this device's secure keystore, and Saara talks to the provider <strong>directly — nothing goes through Realmaya.</strong></p>
-      <ul>
-        <li><strong>Google Gemini</strong> — has a free tier. Tap <span class="lbl">Get a Google Gemini key</span>, create a key, <span class="lbl">Paste</span> it, then <span class="lbl">Test key</span>.</li>
-        <li><strong>Anthropic Claude</strong> — paid; same flow.</li>
-        <li>Pick a <strong>Model</strong>, or tap <span class="lbl">Check available models</span> to list exactly what your key can use (this fixes "model not available" errors).</li>
-      </ul>
-      <div class="note">You're sharing conversation text with a third-party AI, billed to your own account — review their data settings. Saara only ever sends what you ask it to.</div>
-    </section>
-
-    <section class="doc" id="google">
-      <h2><span class="n">11</span>Google Tasks &amp; Calendar sync</h2>
-      <p>Settings → <span class="lbl">Google Tasks sync</span>. Two-way and automatic: creates, edits, completions and deletes flow both ways (<strong>last edit wins</strong>; deleting on one side deletes on the other). Saara <strong>tasks</strong> go to <strong>Google Tasks</strong> (they show in Google Calendar's Tasks layer); Saara <strong>events</strong> go to <strong>Google Calendar</strong>. Everything goes device → Google directly.</p>
-      <h3>Connecting</h3>
-      <ul>
-        <li><strong>Phone:</strong> tap <span class="lbl">Connect Google</span> → choose your account → approve.</li>
-        <li><strong>Desktop:</strong> paste a <span class="lbl">Google desktop client ID</span> + <span class="lbl">Client secret</span> (from Google Cloud Console → Credentials → OAuth client → Desktop app), then <span class="lbl">Connect Google (opens browser)</span>.</li>
-      </ul>
-      <div class="warn"><b>"Google hasn't verified this app"?</b> While Saara's Google verification is in progress you may see this screen. It's expected — tap <b>Advanced</b> → <b>Go to Saara (unsafe)</b> → <b>Allow</b>. Nothing is wrong; the warning disappears once verification completes. Your data still goes only device → Google — never through us.</div>
-      <h3>Day to day</h3>
-      <ul>
-        <li><span class="lbl">Sync now</span> — pull &amp; push immediately.</li>
-        <li><span class="lbl">Auto-sync</span> — on open, and in the background (~30 min) while connected.</li>
-        <li><span class="lbl">Check for duplicate copies</span> — a one-time cleanup if an older version pushed repeat copies. It counts first and only removes Saara-created copies you confirm — items you didn't create in Saara are never touched.</li>
-        <li><span class="lbl">Disconnect</span> — stop syncing (your local data stays).</li>
-      </ul>
-    </section>
-
-    <section class="doc" id="devices">
-      <h2><span class="n">12</span>Sync your devices — over Wi-Fi, no cloud</h2>
-      <p>Keep phone and desktop in step directly, carrying what Google can't — your areas, history, provenance and people. Settings → <span class="lbl">Sync between my devices</span>.</p>
-      <ul>
-        <li><span class="lbl">Sync over Wi-Fi</span> — both on the same network: one device taps <strong>Show a code</strong> (a QR), the other <strong>Scan a code</strong>. They merge both ways in seconds. <em>(A phone hotspot works if your Wi-Fi blocks device-to-device.)</em></li>
-        <li><span class="lbl">Export / Import a ledger file</span> — optionally password-protected. Share it over any app (WhatsApp, email, a folder) and import it on the other device.</li>
-        <li><span class="lbl">Automatic folder sync</span> — point both devices at a shared folder (OneDrive/Google Drive, detected automatically) protected by a passphrase; it syncs on open.</li>
-      </ul>
-      <p><a href="how-sync-works.html">See exactly how the sync converges →</a></p>
-    </section>
-
-    <section class="doc" id="conflicts">
-      <h2><span class="n">13</span>How conflicts are handled</h2>
-      <p>Saara is built so your devices can never truly "conflict":</p>
-      <ul>
-        <li><strong>Your history is never lost.</strong> The integrity ledger is append-only — a mistake is answered with a correcting entry, never a rewrite. Merging two devices can only <em>add</em> facts, so your commitment history and score are always complete.</li>
-        <li><strong>For the current details</strong> of a task (title, time, area), the <strong>most recent edit wins</strong> (by timestamp). If you edit the same field on two devices before they sync, the newer edit is kept.</li>
-        <li><strong>Google sync is two-way</strong> with the same rule — last edit wins; deleting on one side deletes on the other.</li>
-      </ul>
-      <h3>Staying in sync</h3>
-      <p>The <strong>sync chip</strong> in the top bar shows amber <span class="lbl">Sync</span> ("changes not yet synced — tap to sync") or green <span class="lbl">In sync</span>. It matters most on <span class="lbl">Progress</span> — a device that hasn't synced shows only a partial score, so sync before you judge the number.</p>
-      <h3>Schedule conflicts</h3>
-      <p>If two things overlap, Today shows a gentle banner (<em>"N overlaps ahead — tap to see them, keep or change, your call"</em>), and the task form warns when you're double-booking. It's always advisory — Saara never blocks you from committing.</p>
-    </section>
-
-    <section class="doc" id="settings">
-      <h2><span class="n">14</span>Settings reference</h2>
-      <table>
-        <tr><th>Setting</th><th>What it does</th></tr>
-        <tr><td><span class="lbl">Morning brief</span></td><td>"Open your day" reminder — pick the time (default 7:00 AM).</td></tr>
-        <tr><td><span class="lbl">Evening review</span></td><td>"Complete your day" — disposition each task (default 9:00 PM).</td></tr>
-        <tr><td><span class="lbl">Saara AI (your key)</span></td><td>Your Gemini/Claude key (§10).</td></tr>
-        <tr><td><span class="lbl">Import tasks</span></td><td>Offline migration from an Excel/CSV file.</td></tr>
-        <tr><td><span class="lbl">Google Tasks sync</span></td><td>Connect Google Tasks &amp; Calendar (§11).</td></tr>
-        <tr><td><span class="lbl">Committed listeners</span></td><td>People who witness you keeping your word (§9).</td></tr>
-        <tr><td><span class="lbl">Storage</span></td><td>What photos/video/audio use — reclaim space.</td></tr>
-        <tr><td><span class="lbl">Export all my data</span></td><td>A local .zip of everything.</td></tr>
-        <tr><td><span class="lbl">Sync between my devices</span></td><td>Wi-Fi / file / folder sync (§12).</td></tr>
-        <tr><td><span class="lbl">Reset local data</span></td><td>Start this device over — a two-step, type-"RESET" safeguard, with export offered first.</td></tr>
-        <tr><td><span class="lbl">How Saara works</span></td><td>The in-app tour (the coach cards).</td></tr>
-        <tr><td><span class="lbl">Send feedback to the maker</span></td><td>Opens your email app — nothing is sent automatically.</td></tr>
-      </table>
-    </section>
-
-    <section class="doc" id="privacy">
-      <h2><span class="n">15</span>Privacy &amp; your data</h2>
-      <ul>
-        <li><strong>On-device &amp; encrypted.</strong> Your ledger lives in an encrypted database on your device. No account, no server, no telemetry.</li>
-        <li><strong>Your AI, your key.</strong> AI calls go device → provider directly; the key is in your OS keystore.</li>
-        <li><strong>Google sync</strong> goes device → Google directly — never through Realmaya.</li>
-        <li><strong>Yours to take.</strong> Export a full .zip or an encrypted ledger anytime; the ledger is its own backup.</li>
-      </ul>
-      <p>Full details: <a href="privacy.html">Privacy policy</a> · <a href="delete-data.html">Delete your data</a>.</p>
-    </section>
-
-    <section class="doc" id="recipes">
-      <h2><span class="n">16</span>Use-case recipes</h2>
-      <div class="recipes">
-        <div class="recipe">
-          <span class="pill">Capture</span>
-          <h3>A screenshot into an event</h3>
-          <p>Turn a Zoom/Meet invite you were sent into a real calendar event.</p>
-          <ol><li>+ Task → <span class="lbl">From a screenshot / photo</span></li><li>Pick the invite image → choose <strong>Event</strong></li><li>AI fills the title, time and join link — check it against the image</li><li><span class="lbl">Release</span> → it's on your Google Calendar</li></ol>
-        </div>
-        <div class="recipe">
-          <span class="pill">Perform</span>
-          <h3>Run a 2-hour training live</h3>
-          <p>Break a big event into a timed run-of-show you execute on stage.</p>
-          <ol><li>Create the event (2h) → open it</li><li><span class="lbl">Action items</span> → add each segment with a start &amp; duration (they chain automatically)</li><li>On the day: <span class="lbl">Start agenda</span> → tick <span class="lbl">Complete &amp; next</span> as you go</li><li>Finish → review the <strong>Event report</strong></li></ol>
-        </div>
-        <div class="recipe">
-          <span class="pill">Sync</span>
-          <h3>Phone ↔ laptop, no cloud</h3>
-          <p>Move your whole record between your own devices in seconds.</p>
-          <ol><li>Both on the same Wi-Fi</li><li>Settings → <span class="lbl">Sync between my devices</span> → <span class="lbl">Sync over Wi-Fi</span></li><li>Laptop: <strong>Show a code</strong> · Phone: <strong>Scan a code</strong></li><li>They match — history, areas and all</li></ol>
-        </div>
-        <div class="recipe">
-          <span class="pill">Measure</span>
-          <h3>A money goal, scored</h3>
-          <p>Money is just a measurable — quantify it and it's real.</p>
-          <ol><li>Add a task like "Save ₹5,000 this month" in the <strong>Finance</strong> area</li><li>Attach the number as a measurable result</li><li>Hit the number → kept (+1); fall short → not kept. No grey zone.</li></ol>
-        </div>
-        <div class="recipe">
-          <span class="pill">Resolve</span>
-          <h3>Untangle a clash</h3>
-          <p>Two commitments overlap — decide honestly.</p>
-          <ol><li>Today shows <em>"N overlaps ahead"</em> → tap it</li><li>See the clashing items side by side</li><li>Keep one and <span class="lbl">Reschedule</span> the other — cleanly, on the record</li></ol>
-        </div>
-        <div class="recipe">
-          <span class="pill">Invite</span>
-          <h3>Invite someone on WhatsApp</h3>
-          <p>Send a commitment as a beautiful card.</p>
-          <ol><li>Open the event → <span class="lbl">Share as card</span></li><li>Pick <span class="lbl">Brand</span>, optionally add an AI line</li><li><span class="lbl">Share card</span> → WhatsApp — the join link stays tappable</li></ol>
-        </div>
-      </div>
-    </section>
-  </main>
+  <div class="hub-grid">
+    <a class="hub-card" href="guide-basics.html"><span class="num">01</span><h3>Getting started</h3><p>The five tabs, tasks vs events, and the all-important Draft vs Release.</p></a>
+    <a class="hub-card" href="guide-capture.html"><span class="num">02</span><h3>Capturing tasks</h3><p>Type, paste, talk, or snap a photo — with or without AI.</p></a>
+    <a class="hub-card" href="guide-events.html"><span class="num">03</span><h3>Tasks, events &amp; the live agenda</h3><p>Every field, running an event live, and keeping/breaking your word.</p></a>
+    <a class="hub-card" href="guide-progress.html"><span class="num">04</span><h3>Progress &amp; reliability</h3><p>Your score, the ladder from Beginner to Masterful, and areas.</p></a>
+    <a class="hub-card" href="guide-sharing.html"><span class="num">05</span><h3>Sharing &amp; reports</h3><p>Share-as-card invites, reports, and committed listeners.</p></a>
+    <a class="hub-card" href="guide-ai.html"><span class="num">06</span><h3>Ask Saara &amp; your AI key</h3><p>Bring your own Gemini or Claude key — nothing goes through us.</p></a>
+    <a class="hub-card" href="guide-google-sync.html"><span class="num">07</span><h3>Google Tasks &amp; Calendar</h3><p>Two-way sync — and the "Advanced → Continue" step, explained.</p></a>
+    <a class="hub-card" href="guide-devices.html"><span class="num">08</span><h3>Sync your devices</h3><p>Phone ↔ laptop over Wi-Fi, no cloud — and how conflicts resolve.</p></a>
+    <a class="hub-card" href="guide-settings.html"><span class="num">09</span><h3>Settings &amp; privacy</h3><p>Every setting, exporting your data, and how your privacy is kept.</p></a>
+    <a class="hub-card" href="guide-recipes.html"><span class="num">10</span><h3>Use-case recipes</h3><p>Screenshot → event, run a training, money goals, and more.</p></a>
+  </div>
 </div>
 
 <footer><div class="foot">
   <p class="byline">A <b>Realmaya</b> product · Give your word. Keep it.</p>
-  <div class="footlinks">
-    <a href="index.html">Home</a>
-    <a href="about.html">About</a>
-    <a href="privacy.html">Privacy</a>
-    <a href="terms.html">Terms</a>
-    <a href="mailto:veera@realmaya.com">Contact</a>
-  </div>
+  <div class="footlinks"><a href="index.html">Home</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="mailto:veera@realmaya.com">Contact</a></div>
 </div></footer>
-
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </body>
 </html>
