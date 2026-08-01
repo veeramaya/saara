@@ -30,6 +30,10 @@ class MorningBriefScreen extends ConsumerWidget {
         padding: const EdgeInsets.only(bottom: 96),
         children: [
           const DailyQuoteCard(morning: true),
+          tasksAsync.maybeWhen(
+            data: (tasks) => _WhatsInStore(tasks: tasks),
+            orElse: () => const SizedBox.shrink(),
+          ),
           _SectionHeader(
             'Yesterday\'s open items',
             subtitle:
@@ -99,6 +103,73 @@ class MorningBriefScreen extends ConsumerWidget {
       ).showSnackBar(const SnackBar(content: Text('Committed to today.')));
       Navigator.of(context).pop();
     }
+  }
+}
+
+/// §7.3 "What's in store" — the day opens forward-looking: how many words you
+/// have given for today and when the first timed one lands. A quiet, encouraging
+/// glance before you look back at yesterday.
+class _WhatsInStore extends StatelessWidget {
+  const _WhatsInStore({required this.tasks});
+  final List<Task> tasks;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final count = tasks.length;
+    final timed =
+        tasks.where((t) => t.scheduledStart != null).toList()
+          ..sort((a, b) => a.scheduledStart!.compareTo(b.scheduledStart!));
+    final first = timed.isEmpty ? null : timed.first;
+
+    final String line;
+    if (count == 0) {
+      line = 'A clear day ahead. Give your word to what matters most.';
+    } else {
+      final noun = count == 1 ? 'commitment' : 'commitments';
+      line = first == null
+          ? '$count $noun for today.'
+          : '$count $noun for today — first at '
+                '${DateFormat.jm().format(first.scheduledStart!)}: '
+                '${first.title}.';
+    }
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      color: scheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.wb_twilight, color: scheme.onSecondaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "What's in store",
+                    style: text.labelMedium?.copyWith(
+                      color: scheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    line,
+                    style: text.titleMedium?.copyWith(
+                      color: scheme.onSecondaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
