@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
 import '../../providers.dart';
+import '../common/daily_quote_card.dart';
 import '../home/widgets/task_tile.dart';
 
 /// §7.3 Morning brief — "Open your day". Today's plan, plus **yesterday's open
@@ -28,6 +29,7 @@ class MorningBriefScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
+          const DailyQuoteCard(morning: true),
           _SectionHeader(
             'Yesterday\'s open items',
             subtitle:

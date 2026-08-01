@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
+import '../common/daily_quote_card.dart';
 
 /// §7.4 Evening review — "Complete your day". One-tap disposition per remaining
 /// task (complete / reschedule / reject / mark missed). `missed` is finalized
@@ -40,6 +41,7 @@ class EveningReviewScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
+              const DailyQuoteCard(morning: false),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
