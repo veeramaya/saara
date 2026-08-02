@@ -10,6 +10,7 @@ import '../../domain/enums.dart';
 import '../../providers.dart';
 import '../common/world_today_card.dart';
 import '../share/ritual_card_screen.dart';
+import '../sync/sync_status_chip.dart';
 
 /// §7.4 Evening review — "Complete your day". One-tap disposition per remaining
 /// task (complete / reschedule / reject / mark missed). `missed` is finalized
@@ -36,6 +37,7 @@ class EveningReviewScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Complete your day'),
         actions: [
+          const SyncStatusChip(),
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: 'Share to your listeners',

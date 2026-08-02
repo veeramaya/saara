@@ -10,6 +10,7 @@ import '../../providers.dart';
 import '../common/world_today_card.dart';
 import '../home/widgets/task_tile.dart';
 import '../share/ritual_card_screen.dart';
+import '../sync/sync_status_chip.dart';
 import 'holiday_nudges.dart';
 
 /// §7.3 Morning brief — "Open your day". Today's plan, plus **yesterday's open
@@ -32,6 +33,7 @@ class MorningBriefScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Open your day'),
         actions: [
+          const SyncStatusChip(),
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: 'Share to your listeners',
