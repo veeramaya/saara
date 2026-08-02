@@ -183,6 +183,12 @@ class AppSettings {
   Future<bool> coachSeen() async => (await _read(_coachSeen)) == 'yes';
   Future<void> setCoachSeen() => _write(_coachSeen, 'yes');
 
+  /// The update version the user tapped "Later" on, so the "update available"
+  /// banner doesn't nag every launch — it reappears only for a newer version.
+  Future<String?> updateDismissed() => _read('update_dismissed');
+  Future<void> setUpdateDismissed(String version) =>
+      _write('update_dismissed', version);
+
   // ---- daily ritual (§7.3 / §7.4) ------------------------------------------
   // When "Open your day" and "Close your day" fire, and whether they're a
   // mandate ("without which you don't move ahead"). These are *device-local*
