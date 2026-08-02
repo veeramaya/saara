@@ -7,7 +7,9 @@ import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/platform.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../domain/festival_theme.dart';
@@ -172,10 +174,34 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
       final image = await boundary.toImage(pixelRatio: 3);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (data == null) throw 'Could not render the card.';
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/saara-day.png');
-      await file.writeAsBytes(data.buffer.asUint8List());
-      await Share.shareXFiles([XFile(file.path)], text: _messageText());
+      final bytes = data.buffer.asUint8List();
+
+      if (isDesktop) {
+        // Desktop has no OS share sheet for a file, so a share would silently do
+        // nothing. Save the card where the user can grab it and attach it in
+        // WhatsApp / mail themselves, and open the folder for them.
+        final dir =
+            await getDownloadsDirectory() ??
+            await getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/saara-day.png');
+        await file.writeAsBytes(bytes);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 8),
+            content: Text('Card saved to ${file.path}'),
+            action: SnackBarAction(
+              label: 'Open folder',
+              onPressed: () => launchUrl(Uri.file(dir.path)),
+            ),
+          ),
+        );
+      } else {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/saara-day.png');
+        await file.writeAsBytes(bytes);
+        await Share.shareXFiles([XFile(file.path)], text: _messageText());
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -223,8 +249,7 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
       ..writeln(
         "You're one of the people I've given my word to — thank you for being "
         'my mirror.',
-      )
-      ..writeln('— via Saara');
+      );
     return b.toString().trimRight();
   }
 
@@ -265,8 +290,8 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.ios_share),
-                label: const Text('Share card'),
+                    : Icon(isDesktop ? Icons.download : Icons.ios_share),
+                label: Text(isDesktop ? 'Save card' : 'Share card'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
@@ -283,9 +308,14 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Shared as one image showing both faces — the close read with '
-                'the morning it belongs to. Only what\'s on the card is shared; '
-                'your task titles, notes and scores never are.',
+                isDesktop
+                    ? 'One image showing both faces — the close read with the '
+                          'morning it belongs to. It saves to your Downloads so '
+                          'you can attach it in WhatsApp or mail. Only what\'s on '
+                          'the card leaves the device.'
+                    : 'One image showing both faces — the close read with the '
+                          'morning it belongs to. Only what\'s on the card is '
+                          'shared; your task titles, notes and scores never are.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -486,31 +516,15 @@ class _DayFace extends StatelessWidget {
                 const Spacer(),
                 Divider(color: muted.withValues(alpha: 0.3), height: 1),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Text(
-                      'SAARA',
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Give your word. Keep it.',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: muted,
-                          fontSize: 10.5,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Give your word. Keep it.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 11,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ],
             ),
