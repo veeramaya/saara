@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -15,7 +16,9 @@ import '../../domain/enums.dart';
 import '../../domain/festival_theme.dart';
 import '../../domain/holidays_india.dart';
 import '../../domain/world_days.dart';
+import '../../providers.dart';
 import '../areas/area_icons.dart' as ai;
+import '../settings/lan_sync_screen.dart';
 import 'share_channels.dart';
 
 /// A single area's tally for the day — name, colour, how many committed and how
@@ -151,15 +154,15 @@ class DayCardData {
   final DateTime capturedAt;
 }
 
-class RitualCardScreen extends StatefulWidget {
+class RitualCardScreen extends ConsumerStatefulWidget {
   const RitualCardScreen({super.key, required this.data});
   final DayCardData data;
 
   @override
-  State<RitualCardScreen> createState() => _RitualCardScreenState();
+  ConsumerState<RitualCardScreen> createState() => _RitualCardScreenState();
 }
 
-class _RitualCardScreenState extends State<RitualCardScreen> {
+class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
   final _captureKey = GlobalKey();
   bool _busy = false;
 
@@ -217,7 +220,7 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
     await shareTextViaChannels(
       context,
       text: _messageText(),
-      subject: 'My day — via Saara',
+      subject: 'My day',
     );
   }
 
@@ -228,17 +231,17 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
     final date = DateFormat('d MMMM yyyy').format(_d.day);
     final stamp = DateFormat('h:mm a').format(_d.capturedAt);
     final b = StringBuffer()
-      ..writeln('My day — $date (facts as of $stamp)')
+      ..writeln('My day — $date (as of $stamp)')
       ..writeln();
     if (_d.declaration != null && _d.declaration!.isNotEmpty) {
-      b.writeln('🌅 Opening: “${_d.declaration}”');
+      b.writeln('🌅 Declaration: “${_d.declaration}”');
     } else {
-      b.writeln('🌅 Opening: ${_d.total} commitments today');
+      b.writeln('🌅 ${_d.total} commitment${_d.total == 1 ? '' : 's'} for today');
     }
-    if (_d.areas.isNotEmpty) b.writeln('   ${_areaSummary()}');
+    if (_d.areas.isNotEmpty) b.writeln('   Tasks by area — ${_areaSummary()}');
     if (_d.world != null) b.writeln('🌍 The world today: ${_d.world!.title}');
     if (_d.closed) {
-      b.writeln('🌙 Closing: Kept my word ${_d.kept} of ${_d.total}');
+      b.writeln('🌙 Closing: kept my word ${_d.kept} of ${_d.total}');
       if (_d.broken > 0) b.writeln('   Restoring ${_d.broken}');
       if (_d.restoration != null && _d.restoration!.isNotEmpty) {
         b.writeln('   “${_d.restoration}”');
@@ -251,6 +254,69 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
         'my mirror.',
       );
     return b.toString().trimRight();
+  }
+
+  /// So the user knows whether this card is the current, shared truth before
+  /// they send it: amber when this device has edits the others don't have yet,
+  /// a quiet green confirmation when everything's in sync.
+  Widget _freshnessNote() {
+    final fresh = ref.watch(syncFreshnessProvider).valueOrNull;
+    if (fresh == null) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    if (fresh.unsynced) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: scheme.tertiaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.sync_problem,
+              size: 18,
+              color: scheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "This device has changes your other devices don't have yet. "
+                'Sync first so this card is the shared truth.',
+                style: TextStyle(
+                  color: scheme.onTertiaryContainer,
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LanSyncScreen()),
+              ),
+              child: const Text('Sync'),
+            ),
+          ],
+        ),
+      );
+    }
+    final last = fresh.lastSync;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.check_circle, size: 15, color: Colors.green.shade600),
+          const SizedBox(width: 6),
+          Text(
+            last == null
+                ? 'This device is up to date.'
+                : 'Up to date · last synced '
+                      '${DateFormat('MMM d, h:mm a').format(last)}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -269,6 +335,7 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
               24 + MediaQuery.of(context).padding.bottom,
             ),
             children: [
+              _freshnessNote(),
               Center(
                 child: _FlipCard(
                   front: _DayFace(data: _d, open: true),
