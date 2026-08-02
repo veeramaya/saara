@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'core/theme.dart';
 import 'features/agent/saara_agent_screen.dart';
@@ -19,7 +18,6 @@ import 'providers.dart';
 import 'services/incoming_share.dart';
 import 'services/ledger_sync_service.dart';
 import 'services/notification_service.dart';
-import 'services/update_checker.dart';
 
 /// Root widget. §20.1 bottom NavigationBar: Today · Tasks · Areas · Progress ·
 /// Saara. Tasks is the global searchable list (§7); Saara is the conversational
@@ -77,7 +75,6 @@ class _RootShellState extends ConsumerState<_RootShell>
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowCoach());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkIncomingShare());
     WidgetsBinding.instance.addPostFrameCallback((_) => _armAndGateRituals());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForUpdate());
     // A daily-agent notification tapped while we're running opens its ritual.
     NotificationService.instance.tappedRitual.addListener(_onRitualTapped);
     _syncTimer = Timer.periodic(
@@ -332,47 +329,6 @@ class _RootShellState extends ConsumerState<_RootShell>
       );
     } catch (_) {
       // coach is non-critical — never block the app if it fails
-    }
-  }
-
-  /// Tell the user when a newer Saara is published — the only update channel on
-  /// desktop (no store), and a gentle nudge on Android. Quiet and dismissible:
-  /// "Later" silences it until a newer version. Fails silent (offline, etc.).
-  Future<void> _checkForUpdate() async {
-    try {
-      final info = await const UpdateChecker().check();
-      if (info == null || !mounted) return;
-      final settings = ref.read(appSettingsProvider);
-      if (await settings.updateDismissed() == info.version) return;
-      if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showMaterialBanner(
-        MaterialBanner(
-          leading: const Icon(Icons.system_update_outlined),
-          content: Text('Saara ${info.version} is available.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                settings.setUpdateDismissed(info.version);
-                messenger.hideCurrentMaterialBanner();
-              },
-              child: const Text('Later'),
-            ),
-            FilledButton(
-              onPressed: () {
-                messenger.hideCurrentMaterialBanner();
-                launchUrl(
-                  Uri.parse(info.url),
-                  mode: LaunchMode.externalApplication,
-                );
-              },
-              child: const Text('Update'),
-            ),
-          ],
-        ),
-      );
-    } catch (_) {
-      // A version check must never disrupt the app.
     }
   }
 

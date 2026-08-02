@@ -293,6 +293,22 @@ class LedgerSyncService {
       );
     }
 
+    // Version-compatibility gate. A newer Saara can add tables/columns (a higher
+    // schemaVersion); importing its bundle into an older build that lacks them
+    // would drop data on the floor — protected by the ledger, but a poor,
+    // confusing experience. So we STOP and tell the user to update *this*
+    // (older) device rather than merge a structure we can't fully hold. No auto-
+    // upgrade, no background push — the person decides and acts (§1). The reverse
+    // (a newer device reading an older bundle) is safe and proceeds normally.
+    final incomingSchema = bundle['schemaVersion'] as int? ?? 0;
+    if (incomingSchema > db.schemaVersion) {
+      throw StateError(
+        'The device you\'re syncing with runs a newer version of Saara — its '
+        'data is a step ahead of this one. Update THIS device '
+        '(Settings → Check for updates), then sync again so nothing is missed.',
+      );
+    }
+
     // Learn the peer's device names (and its view of others), so a task it
     // wrote shows "Desktop"/"Mobile" here too. Outside the transaction — it is
     // display metadata, never a reason to fail a merge.
@@ -658,6 +674,9 @@ class FolderSyncResult {
 /// **different passphrases**, which otherwise looks identical to "did nothing".
 String _skipReason(Object e) {
   final s = e.toString().toLowerCase();
+  if (s.contains('newer version of saara')) {
+    return 'that device runs a newer Saara — update this one, then sync';
+  }
   if (e is FormatException || s.contains('decrypt') || s.contains('pad')) {
     return "couldn't decrypt — passphrase mismatch?";
   }
