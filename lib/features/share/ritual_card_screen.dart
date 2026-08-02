@@ -235,7 +235,14 @@ class _RitualCardScreenState extends State<RitualCardScreen> {
       body: Stack(
         children: [
           ListView(
-            padding: const EdgeInsets.all(24),
+            // Add the bottom system inset so the last button clears the
+            // Android 15 edge-to-edge gesture bar (no bottomNavigationBar here).
+            padding: EdgeInsets.fromLTRB(
+              24,
+              24,
+              24,
+              24 + MediaQuery.of(context).padding.bottom,
+            ),
             children: [
               Center(
                 child: _FlipCard(
