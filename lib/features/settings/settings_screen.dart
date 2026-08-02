@@ -15,6 +15,7 @@ import '../../core/platform.dart';
 import '../../providers.dart';
 import '../../services/feedback_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/update_checker.dart';
 import '../coach/coach_screen.dart';
 import '../google/google_sync_screen.dart';
 import '../import/import_screen.dart';
@@ -41,6 +42,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _exporting = false;
   bool _resetting = false;
   bool _ledgerBusy = false;
+  bool _checkingUpdate = false;
+  String _appVersion = '';
 
   @override
   void initState() {
@@ -56,12 +59,68 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final m = await s.ritualMorning();
     final e = await s.ritualEvening();
     final mandate = await s.ritualMandate();
+    final info = await PackageInfo.fromPlatform();
     if (!mounted) return;
     setState(() {
       _morning = TimeOfDay(hour: m.hour, minute: m.minute);
       _evening = TimeOfDay(hour: e.hour, minute: e.minute);
       _mandate = mandate;
+      _appVersion = info.version;
     });
+  }
+
+  /// Manual "check for updates" — the user-initiated counterpart to the silent
+  /// launch check. Tells you if you're current, or offers the one-tap route to
+  /// the update (Play on Android, the download on desktop).
+  Future<void> _checkForUpdates() async {
+    setState(() => _checkingUpdate = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final info = await const UpdateChecker().check();
+      if (!mounted) return;
+      if (info == null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              _appVersion.isEmpty
+                  ? "You're on the latest version."
+                  : "You're on the latest version ($_appVersion).",
+            ),
+          ),
+        );
+        return;
+      }
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Saara ${info.version} is available'),
+          content: Text(
+            isDesktop
+                ? 'Download the new version, then extract and run it in place '
+                      'of your current copy. Your data stays where it is.'
+                : 'Update from the Play Store.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(isDesktop ? 'Download' : 'Update'),
+            ),
+          ],
+        ),
+      );
+      if (go == true) {
+        await launchUrl(
+          Uri.parse(info.url),
+          mode: LaunchMode.externalApplication,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
   }
 
   @override
@@ -211,6 +270,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           const Divider(),
           _sectionTitle('About & feedback'),
+          ListTile(
+            leading: const Icon(Icons.system_update_outlined),
+            title: const Text('Check for updates'),
+            subtitle: Text(
+              _appVersion.isEmpty
+                  ? 'See if a newer Saara is available'
+                  : 'You\'re on version $_appVersion',
+            ),
+            trailing: _checkingUpdate
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _checkingUpdate ? null : _checkForUpdates,
+          ),
           ListTile(
             leading: const Icon(Icons.school_outlined),
             title: const Text('How Saara works'),
