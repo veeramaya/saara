@@ -263,7 +263,8 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     _kind = t.kind ?? TaskKind.task;
     _titleController.text = t.title;
     _notesController.text = t.notes ?? '';
-    _scheduledStart = t.scheduledStart;
+    // A task may carry only a due date (no start) — show that in the field.
+    _scheduledStart = t.scheduledStart ?? t.dueDate;
     _durationMin = t.durationMin;
     _loadRrule(t.rrule);
     _areaId = t.areaId;
@@ -456,12 +457,19 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                   TextField(controller: _titleController),
                   const SizedBox(height: 12),
 
-                  _FieldLabel('When', uncertain.contains('scheduledStart')),
+                  _FieldLabel(
+                    _kind == TaskKind.event ? 'When' : 'Due date',
+                    uncertain.contains('scheduledStart'),
+                  ),
                   _PickerRow(
                     text: _scheduledStart == null
-                        ? 'No date/time'
+                        ? (_kind == TaskKind.event
+                              ? 'No date/time'
+                              : 'No due date')
                         : DateFormat(
-                            'EEE, MMM d · h:mm a',
+                            _kind == TaskKind.event
+                                ? 'EEE, MMM d · h:mm a'
+                                : 'EEE, MMM d',
                           ).format(_scheduledStart!),
                     onTap: _pickDateTime,
                   ),
@@ -488,36 +496,40 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                     ),
                   const SizedBox(height: 12),
 
-                  _FieldLabel('Duration', uncertain.contains('durationMin')),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      for (final m in const [15, 30, 45, 60, 90, 120])
-                        ChoiceChip(
-                          label: Text(_durationLabel(m)),
-                          selected: _durationMin == m,
-                          onSelected: (_) => setState(
-                            () => _durationMin = _durationMin == m ? null : m,
+                  // Duration/end is a start→end span — an event concept. A task
+                  // carries a due date only, so this shows only for events.
+                  if (_kind == TaskKind.event) ...[
+                    _FieldLabel('Duration', uncertain.contains('durationMin')),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final m in const [15, 30, 45, 60, 90, 120])
+                          ChoiceChip(
+                            label: Text(_durationLabel(m)),
+                            selected: _durationMin == m,
+                            onSelected: (_) => setState(
+                              () => _durationMin = _durationMin == m ? null : m,
+                            ),
                           ),
+                        // Explicit end time — the natural way to say "6 to 11 PM".
+                        // Sets duration from start→end, so both stay consistent.
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.schedule, size: 16),
+                          label: Text(_endsLabel()),
+                          onPressed: _pickEnd,
                         ),
-                      // Explicit end time — the natural way to say "6 to 11 PM".
-                      // Sets duration from start→end, so both stay consistent.
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.schedule, size: 16),
-                        label: Text(_endsLabel()),
-                        onPressed: _pickEnd,
-                      ),
-                      if (_durationMin != null)
-                        IconButton(
-                          tooltip: 'Clear duration',
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: () => setState(() => _durationMin = null),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                        if (_durationMin != null)
+                          IconButton(
+                            tooltip: 'Clear duration',
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => setState(() => _durationMin = null),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   _FieldLabel('Location', false),
                   TextField(
@@ -1162,17 +1174,23 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
 
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
+    final isEvent = _kind == TaskKind.event;
     final date = await showDatePicker(
       context: context,
       initialDate: _scheduledStart ?? now,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365 * 5)),
+      helpText: isEvent ? null : 'Due date',
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_scheduledStart ?? now),
-    );
+    // An event has a start *time*; a task's due date does not — skip the clock.
+    TimeOfDay? time;
+    if (isEvent) {
+      time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_scheduledStart ?? now),
+      );
+    }
     setState(() {
       _scheduledStart = DateTime(
         date.year,
@@ -1502,17 +1520,22 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   Future<void> _saveEdit(
     Task t,
     String title,
-    DateTime? anchor,
+    DateTime? startVal,
+    DateTime? dueVal,
     bool isEvent,
     DateTime now,
   ) async {
     final db = ref.read(appDatabaseProvider);
+    // The effective date of this item (a task's due date, or an event's start),
+    // for refreshing day views and scheduling the reminder.
+    final effectiveWhen = startVal ?? dueVal;
     // Editing one date of a repeating task: ask the scope first (§4).
     if (t.parentRecurringId != null) {
       final scope = await _askEditScope();
       if (scope == null) return; // cancelled — change nothing
       if (scope != 'one') {
-        await _saveSeriesEdit(t, title, anchor, scope, now);
+        // A recurring series is anchored on its start.
+        await _saveSeriesEdit(t, title, startVal ?? dueVal, scope, now);
         return;
       }
     }
@@ -1532,9 +1555,9 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
               : _notesController.text.trim(),
         ),
         areaId: Value(_areaId),
-        scheduledStart: Value(anchor),
-        dueDate: Value(anchor),
-        durationMin: Value(_durationMin),
+        scheduledStart: Value(startVal),
+        dueDate: Value(dueVal),
+        durationMin: Value(isEvent ? _durationMin : null),
         rrule: Value(_effectiveRrule),
         reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
         meetingLink: Value(
@@ -1571,9 +1594,15 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     ref.invalidate(childTaskCountsProvider);
     ref.invalidate(tasksForDayProvider(DateTime(now.year, now.month, now.day)));
     ref.invalidate(unscheduledTasksProvider);
-    if (anchor != null) {
+    if (effectiveWhen != null) {
       ref.invalidate(
-        tasksForDayProvider(DateTime(anchor.year, anchor.month, anchor.day)),
+        tasksForDayProvider(
+          DateTime(
+            effectiveWhen.year,
+            effectiveWhen.month,
+            effectiveWhen.day,
+          ),
+        ),
       );
     }
     final oldStart = t.scheduledStart;
@@ -1585,11 +1614,11 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       );
     }
     // §8 reschedule or clear the reminder to match the edit.
-    if (_reminderEnabled && anchor != null) {
+    if (_reminderEnabled && effectiveWhen != null) {
       await NotificationService.instance.scheduleTaskReminder(
         taskId: t.id,
         title: title,
-        when: anchor,
+        when: effectiveWhen,
         offsetsMinutes: const [-15],
       );
     } else {
@@ -1725,13 +1754,20 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         _scheduledStart ??
         (isRecurring ? DateTime(now.year, now.month, now.day, 9) : null);
 
+    // A one-off task is a deadline: it carries a DUE date and no start (matching
+    // Google Tasks, which is due-date only). Events keep start + end; a recurring
+    // template keeps a start anchor for the RRULE to expand from.
+    final dueOnly = !isEvent && !isRecurring;
+    final startVal = dueOnly ? null : anchor;
+    final dueVal = anchor;
+
     if (widget.editing != null) {
       // Releasing a draft you saved earlier — the commitment is made here, so
       // it is recorded here.
       if (release && !_alreadyReleased) {
         await ref.read(taskServiceProvider).release(widget.editing!);
       }
-      await _saveEdit(widget.editing!, title, anchor, isEvent, now);
+      await _saveEdit(widget.editing!, title, startVal, dueVal, isEvent, now);
       return;
     }
 
@@ -1755,9 +1791,9 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       ),
       areaId: Value(_areaId),
       status: const Value(TaskStatus.created),
-      scheduledStart: Value(anchor),
-      dueDate: Value(anchor),
-      durationMin: Value(_durationMin),
+      scheduledStart: Value(startVal),
+      dueDate: Value(dueVal),
+      durationMin: Value(isEvent ? _durationMin : null),
       rrule: Value(_effectiveRrule),
       reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
       meetingLink: Value(
