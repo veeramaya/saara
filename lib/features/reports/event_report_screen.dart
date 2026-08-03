@@ -53,6 +53,8 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
   Widget build(BuildContext context) {
     final eventAsync = ref.watch(taskByIdProvider(widget.eventId));
     final itemsAsync = ref.watch(childTasksForEventProvider(widget.eventId));
+    // Load the event's captures so the report lists them (§3.4).
+    ref.watch(capturesForTaskProvider(widget.eventId));
 
     return Scaffold(
       appBar: AppBar(
@@ -109,6 +111,39 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
         return sa.compareTo(sb);
       });
     return [for (final t in sorted) _Line(t)];
+  }
+
+  List<Capture> _captures() =>
+      ref.read(capturesForTaskProvider(widget.eventId)).valueOrNull ??
+      const <Capture>[];
+
+  static IconData _captureIcon(CaptureType t) => switch (t) {
+    CaptureType.text => Icons.sticky_note_2_outlined,
+    CaptureType.audio => Icons.mic_none,
+    CaptureType.video => Icons.videocam_outlined,
+    CaptureType.image => Icons.photo_outlined,
+  };
+
+  /// A one-line label for a capture — its content (for a note) or its kind and
+  /// length, plus any caption. Media isn't embedded; the report references it.
+  static String _captureLabel(Capture c) {
+    final base = switch (c.type) {
+      CaptureType.text =>
+        (c.textContent?.trim().isNotEmpty ?? false)
+            ? c.textContent!.trim()
+            : 'Note',
+      CaptureType.audio => 'Audio note',
+      CaptureType.video => 'Video',
+      CaptureType.image => 'Photo',
+    };
+    final d = c.durationSec ?? 0;
+    final dur = d == 0
+        ? ''
+        : ' · ${d ~/ 60}:${(d % 60).toString().padLeft(2, '0')}';
+    final cap = c.caption?.trim();
+    return (cap != null && cap.isNotEmpty && c.type != CaptureType.text)
+        ? '$base$dur — $cap'
+        : '$base$dur';
   }
 
   Widget _body(BuildContext context, Task event, List<_Line> lines) {
@@ -241,6 +276,23 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
           Text('Notes', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(event.notes!),
+        ],
+        if (_captures().isNotEmpty) ...[
+          const Divider(height: 32),
+          Text('Captures', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          for (final c in _captures())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(_captureIcon(c.type), size: 18, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_captureLabel(c))),
+                ],
+              ),
+            ),
         ],
         if ((event.reviewNotes?.trim().isNotEmpty ?? false)) ...[
           const Divider(height: 32),
@@ -485,6 +537,15 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
           ..writeln('## Notes')
           ..writeln()
           ..writeln(event.notes);
+      }
+      final caps = _captures();
+      if (caps.isNotEmpty) {
+        b
+          ..writeln()
+          ..writeln('## Captures');
+        for (final c in caps) {
+          b.writeln('- ${_captureLabel(c)}');
+        }
       }
       if ((event.reviewNotes ?? '').trim().isNotEmpty) {
         b
