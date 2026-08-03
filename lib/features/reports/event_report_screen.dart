@@ -5,11 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/platform.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../domain/reliability.dart';
 import '../../providers.dart';
+import '../share/share_channels.dart';
 
 /// §13 post-session report for an event that has an agenda: how each item was
 /// *planned* vs how it actually *ran*, the session's own reliability, and —
@@ -61,7 +64,13 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
             onPressed: () {
               final e = eventAsync.valueOrNull;
               final i = itemsAsync.valueOrNull;
-              if (e != null && i != null) Share.share(_plainText(e, _lines(i)));
+              if (e != null && i != null) {
+                shareTextViaChannels(
+                  context,
+                  text: _plainText(e, _lines(i)),
+                  subject: '${e.title} — report',
+                );
+              }
             },
           ),
           IconButton(
@@ -227,6 +236,12 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
 
+        if ((event.notes?.trim().isNotEmpty ?? false)) ...[
+          const Divider(height: 32),
+          Text('Notes', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text(event.notes!),
+        ],
         if ((event.reviewNotes?.trim().isNotEmpty ?? false)) ...[
           const Divider(height: 32),
           Text('Your review', style: Theme.of(context).textTheme.titleMedium),
@@ -464,6 +479,13 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
           ..writeln()
           ..writeln(_aiInsight);
       }
+      if ((event.notes ?? '').trim().isNotEmpty) {
+        b
+          ..writeln()
+          ..writeln('## Notes')
+          ..writeln()
+          ..writeln(event.notes);
+      }
       if ((event.reviewNotes ?? '').trim().isNotEmpty) {
         b
           ..writeln()
@@ -476,7 +498,6 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
         ..writeln('---')
         ..writeln('_Exported from Saara_');
 
-      final dir = await getTemporaryDirectory();
       final safe = event.title
           .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), '')
           .trim()
@@ -484,11 +505,32 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
       final stamp = when == null
           ? ''
           : '-${DateFormat('yyyy-MM-dd').format(when)}';
-      final file = File('${dir.path}/$safe$stamp.md');
-      await file.writeAsString(b.toString());
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], subject: '${event.title} — agenda & report');
+      // Desktop has no OS share sheet for a file, so save it where the user can
+      // find it and open the folder; mobile hands it to the share sheet.
+      if (isDesktop) {
+        final dir =
+            await getDownloadsDirectory() ??
+            await getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/$safe$stamp.md');
+        await file.writeAsString(b.toString());
+        messenger.showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 8),
+            content: Text('Report saved to ${file.path}'),
+            action: SnackBarAction(
+              label: 'Open folder',
+              onPressed: () => launchUrl(Uri.file(dir.path)),
+            ),
+          ),
+        );
+      } else {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$safe$stamp.md');
+        await file.writeAsString(b.toString());
+        await Share.shareXFiles([
+          XFile(file.path),
+        ], subject: '${event.title} — agenda & report');
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
