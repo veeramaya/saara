@@ -1,9 +1,8 @@
-import 'package:drift/drift.dart' show Value;
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-
-import 'dart:async';
 
 import '../../data/database.dart';
 import '../../providers.dart';
@@ -42,9 +41,9 @@ class MorningBriefScreen extends ConsumerWidget {
               final areas =
                   ref.read(activeAreasProvider).valueOrNull ?? const <Area>[];
               final key = DateFormat('yyyy-MM-dd').format(day);
-              final declaration = await ref
-                  .read(appSettingsProvider)
-                  .ritualDeclaration(key);
+              final declaration =
+                  (await ref.read(appDatabaseProvider).dayLogFor(key))
+                      ?.declaration;
               if (!context.mounted) return;
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -141,17 +140,9 @@ class MorningBriefScreen extends ConsumerWidget {
   ) async {
     final db = ref.read(appDatabaseProvider);
     final key = DateFormat('yyyy-MM-dd').format(day);
-    final now = DateTime.now();
-    // Upsert the DayLog with committed_at (§3.6, §7.3).
-    await db
-        .into(db.dayLogs)
-        .insertOnConflictUpdate(
-          DayLogsCompanion.insert(
-            date: key,
-            committedAt: Value(now),
-            openedAt: Value(now),
-          ),
-        );
+    // Upsert the DayLog with committed_at (§3.6, §7.3) — stamps updated_at for
+    // the sync merge.
+    await db.markDayCommitted(key);
     if (context.mounted) {
       ScaffoldMessenger.of(
         context,
@@ -307,14 +298,24 @@ class _DeclarationFieldState extends ConsumerState<_DeclarationField> {
   }
 
   Future<void> _load() async {
-    final v = await ref.read(appSettingsProvider).ritualDeclaration(_key);
+    final db = ref.read(appDatabaseProvider);
+    var v = (await db.dayLogFor(_key))?.declaration;
+    // Migrate a value written by the older device-local path into the synced
+    // day record, so nothing declared before this change is lost.
+    if (v == null || v.isEmpty) {
+      final legacy = await ref.read(appSettingsProvider).ritualDeclaration(_key);
+      if (legacy != null && legacy.isNotEmpty) {
+        v = legacy;
+        await db.setDayDeclaration(_key, legacy);
+      }
+    }
     if (mounted && v != null && v.isNotEmpty) _controller.text = v;
   }
 
   void _onChanged(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      ref.read(appSettingsProvider).setRitualDeclaration(_key, v);
+      ref.read(appDatabaseProvider).setDayDeclaration(_key, v);
     });
   }
 

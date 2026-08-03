@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -161,6 +161,15 @@ class AppDatabase extends _$AppDatabase {
         // Optional phone for a participant, so they can be called/WhatsApp'd.
         await m.addColumn(taskParticipants, taskParticipants.phone);
       }
+      // v15: the day's own record — declaration, restoration and the shared-card
+      // stamp — becomes part of the synced DayLog (§7/§9), with updated_at for
+      // last-writer-wins merge.
+      if (from < 15) {
+        await m.addColumn(dayLogs, dayLogs.declaration);
+        await m.addColumn(dayLogs, dayLogs.reflection);
+        await m.addColumn(dayLogs, dayLogs.cardSharedAt);
+        await m.addColumn(dayLogs, dayLogs.updatedAt);
+      }
     },
     beforeOpen: (details) async {
       // Enforce FK constraints (integrity ledger relies on them, §3.3).
@@ -172,6 +181,70 @@ class AppDatabase extends _$AppDatabase {
       }
     },
   );
+
+  // ---- Day ritual record (§7) — the synced DayLog -------------------------
+  // The morning declaration, evening restoration and the shared-card stamp live
+  // here (not device-local settings) so they read the same on every device.
+  // Each write bumps `updated_at` for the last-writer-wins sync merge.
+
+  Future<DayLog?> dayLogFor(String dateKey) =>
+      (select(dayLogs)..where((d) => d.date.equals(dateKey))).getSingleOrNull();
+
+  Future<void> setDayDeclaration(String dateKey, String? text) {
+    final t = text?.trim();
+    return into(dayLogs).insertOnConflictUpdate(
+      DayLogsCompanion(
+        date: Value(dateKey),
+        declaration: Value(t == null || t.isEmpty ? null : t),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> setDayReflection(String dateKey, String? text) {
+    final t = text?.trim();
+    return into(dayLogs).insertOnConflictUpdate(
+      DayLogsCompanion(
+        date: Value(dateKey),
+        reflection: Value(t == null || t.isEmpty ? null : t),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> markCardShared(String dateKey) {
+    final now = DateTime.now();
+    return into(dayLogs).insertOnConflictUpdate(
+      DayLogsCompanion(
+        date: Value(dateKey),
+        cardSharedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> markDayCommitted(String dateKey) {
+    final now = DateTime.now();
+    return into(dayLogs).insertOnConflictUpdate(
+      DayLogsCompanion(
+        date: Value(dateKey),
+        openedAt: Value(now),
+        committedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> markDayClosed(String dateKey) {
+    final now = DateTime.now();
+    return into(dayLogs).insertOnConflictUpdate(
+      DayLogsCompanion(
+        date: Value(dateKey),
+        closedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
 
   static const _deviceIdKey = 'device_id';
 

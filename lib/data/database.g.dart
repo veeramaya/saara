@@ -7522,6 +7522,50 @@ class $DayLogsTable extends DayLogs with TableInfo<$DayLogsTable, DayLog> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _declarationMeta = const VerificationMeta(
+    'declaration',
+  );
+  @override
+  late final GeneratedColumn<String> declaration = GeneratedColumn<String>(
+    'declaration',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reflectionMeta = const VerificationMeta(
+    'reflection',
+  );
+  @override
+  late final GeneratedColumn<String> reflection = GeneratedColumn<String>(
+    'reflection',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cardSharedAtMeta = const VerificationMeta(
+    'cardSharedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> cardSharedAt = GeneratedColumn<DateTime>(
+    'card_shared_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     date,
@@ -7529,6 +7573,10 @@ class $DayLogsTable extends DayLogs with TableInfo<$DayLogsTable, DayLog> {
     committedAt,
     closedAt,
     reflectionCaptureId,
+    declaration,
+    reflection,
+    cardSharedAt,
+    updatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7580,6 +7628,36 @@ class $DayLogsTable extends DayLogs with TableInfo<$DayLogsTable, DayLog> {
         ),
       );
     }
+    if (data.containsKey('declaration')) {
+      context.handle(
+        _declarationMeta,
+        declaration.isAcceptableOrUnknown(
+          data['declaration']!,
+          _declarationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reflection')) {
+      context.handle(
+        _reflectionMeta,
+        reflection.isAcceptableOrUnknown(data['reflection']!, _reflectionMeta),
+      );
+    }
+    if (data.containsKey('card_shared_at')) {
+      context.handle(
+        _cardSharedAtMeta,
+        cardSharedAt.isAcceptableOrUnknown(
+          data['card_shared_at']!,
+          _cardSharedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -7609,6 +7687,22 @@ class $DayLogsTable extends DayLogs with TableInfo<$DayLogsTable, DayLog> {
         DriftSqlType.string,
         data['${effectivePrefix}reflection_capture_id'],
       ),
+      declaration: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}declaration'],
+      ),
+      reflection: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reflection'],
+      ),
+      cardSharedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}card_shared_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
     );
   }
 
@@ -7624,12 +7718,30 @@ class DayLog extends DataClass implements Insertable<DayLog> {
   final DateTime? committedAt;
   final DateTime? closedAt;
   final String? reflectionCaptureId;
+
+  /// §7.3 the morning declaration — the word you give for the day, in your own
+  /// voice. Synced (LWW), so it reads the same on every device.
+  final String? declaration;
+
+  /// §7.4 the evening restoration line — one honest line to close on. Synced.
+  final String? reflection;
+
+  /// §13 when a Day Card was last shared for this day, so any device can show
+  /// "you already shared a card today — revise?" rather than duplicate it.
+  final DateTime? cardSharedAt;
+
+  /// LWW clock for the sync merge.
+  final DateTime? updatedAt;
   const DayLog({
     required this.date,
     this.openedAt,
     this.committedAt,
     this.closedAt,
     this.reflectionCaptureId,
+    this.declaration,
+    this.reflection,
+    this.cardSharedAt,
+    this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7646,6 +7758,18 @@ class DayLog extends DataClass implements Insertable<DayLog> {
     }
     if (!nullToAbsent || reflectionCaptureId != null) {
       map['reflection_capture_id'] = Variable<String>(reflectionCaptureId);
+    }
+    if (!nullToAbsent || declaration != null) {
+      map['declaration'] = Variable<String>(declaration);
+    }
+    if (!nullToAbsent || reflection != null) {
+      map['reflection'] = Variable<String>(reflection);
+    }
+    if (!nullToAbsent || cardSharedAt != null) {
+      map['card_shared_at'] = Variable<DateTime>(cardSharedAt);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
     }
     return map;
   }
@@ -7665,6 +7789,18 @@ class DayLog extends DataClass implements Insertable<DayLog> {
       reflectionCaptureId: reflectionCaptureId == null && nullToAbsent
           ? const Value.absent()
           : Value(reflectionCaptureId),
+      declaration: declaration == null && nullToAbsent
+          ? const Value.absent()
+          : Value(declaration),
+      reflection: reflection == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reflection),
+      cardSharedAt: cardSharedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cardSharedAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
     );
   }
 
@@ -7681,6 +7817,10 @@ class DayLog extends DataClass implements Insertable<DayLog> {
       reflectionCaptureId: serializer.fromJson<String?>(
         json['reflectionCaptureId'],
       ),
+      declaration: serializer.fromJson<String?>(json['declaration']),
+      reflection: serializer.fromJson<String?>(json['reflection']),
+      cardSharedAt: serializer.fromJson<DateTime?>(json['cardSharedAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
   }
   @override
@@ -7692,6 +7832,10 @@ class DayLog extends DataClass implements Insertable<DayLog> {
       'committedAt': serializer.toJson<DateTime?>(committedAt),
       'closedAt': serializer.toJson<DateTime?>(closedAt),
       'reflectionCaptureId': serializer.toJson<String?>(reflectionCaptureId),
+      'declaration': serializer.toJson<String?>(declaration),
+      'reflection': serializer.toJson<String?>(reflection),
+      'cardSharedAt': serializer.toJson<DateTime?>(cardSharedAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
   }
 
@@ -7701,6 +7845,10 @@ class DayLog extends DataClass implements Insertable<DayLog> {
     Value<DateTime?> committedAt = const Value.absent(),
     Value<DateTime?> closedAt = const Value.absent(),
     Value<String?> reflectionCaptureId = const Value.absent(),
+    Value<String?> declaration = const Value.absent(),
+    Value<String?> reflection = const Value.absent(),
+    Value<DateTime?> cardSharedAt = const Value.absent(),
+    Value<DateTime?> updatedAt = const Value.absent(),
   }) => DayLog(
     date: date ?? this.date,
     openedAt: openedAt.present ? openedAt.value : this.openedAt,
@@ -7709,6 +7857,10 @@ class DayLog extends DataClass implements Insertable<DayLog> {
     reflectionCaptureId: reflectionCaptureId.present
         ? reflectionCaptureId.value
         : this.reflectionCaptureId,
+    declaration: declaration.present ? declaration.value : this.declaration,
+    reflection: reflection.present ? reflection.value : this.reflection,
+    cardSharedAt: cardSharedAt.present ? cardSharedAt.value : this.cardSharedAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
   );
   DayLog copyWithCompanion(DayLogsCompanion data) {
     return DayLog(
@@ -7721,6 +7873,16 @@ class DayLog extends DataClass implements Insertable<DayLog> {
       reflectionCaptureId: data.reflectionCaptureId.present
           ? data.reflectionCaptureId.value
           : this.reflectionCaptureId,
+      declaration: data.declaration.present
+          ? data.declaration.value
+          : this.declaration,
+      reflection: data.reflection.present
+          ? data.reflection.value
+          : this.reflection,
+      cardSharedAt: data.cardSharedAt.present
+          ? data.cardSharedAt.value
+          : this.cardSharedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -7731,14 +7893,27 @@ class DayLog extends DataClass implements Insertable<DayLog> {
           ..write('openedAt: $openedAt, ')
           ..write('committedAt: $committedAt, ')
           ..write('closedAt: $closedAt, ')
-          ..write('reflectionCaptureId: $reflectionCaptureId')
+          ..write('reflectionCaptureId: $reflectionCaptureId, ')
+          ..write('declaration: $declaration, ')
+          ..write('reflection: $reflection, ')
+          ..write('cardSharedAt: $cardSharedAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(date, openedAt, committedAt, closedAt, reflectionCaptureId);
+  int get hashCode => Object.hash(
+    date,
+    openedAt,
+    committedAt,
+    closedAt,
+    reflectionCaptureId,
+    declaration,
+    reflection,
+    cardSharedAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -7747,7 +7922,11 @@ class DayLog extends DataClass implements Insertable<DayLog> {
           other.openedAt == this.openedAt &&
           other.committedAt == this.committedAt &&
           other.closedAt == this.closedAt &&
-          other.reflectionCaptureId == this.reflectionCaptureId);
+          other.reflectionCaptureId == this.reflectionCaptureId &&
+          other.declaration == this.declaration &&
+          other.reflection == this.reflection &&
+          other.cardSharedAt == this.cardSharedAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class DayLogsCompanion extends UpdateCompanion<DayLog> {
@@ -7756,6 +7935,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
   final Value<DateTime?> committedAt;
   final Value<DateTime?> closedAt;
   final Value<String?> reflectionCaptureId;
+  final Value<String?> declaration;
+  final Value<String?> reflection;
+  final Value<DateTime?> cardSharedAt;
+  final Value<DateTime?> updatedAt;
   final Value<int> rowid;
   const DayLogsCompanion({
     this.date = const Value.absent(),
@@ -7763,6 +7946,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
     this.committedAt = const Value.absent(),
     this.closedAt = const Value.absent(),
     this.reflectionCaptureId = const Value.absent(),
+    this.declaration = const Value.absent(),
+    this.reflection = const Value.absent(),
+    this.cardSharedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DayLogsCompanion.insert({
@@ -7771,6 +7958,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
     this.committedAt = const Value.absent(),
     this.closedAt = const Value.absent(),
     this.reflectionCaptureId = const Value.absent(),
+    this.declaration = const Value.absent(),
+    this.reflection = const Value.absent(),
+    this.cardSharedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : date = Value(date);
   static Insertable<DayLog> custom({
@@ -7779,6 +7970,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
     Expression<DateTime>? committedAt,
     Expression<DateTime>? closedAt,
     Expression<String>? reflectionCaptureId,
+    Expression<String>? declaration,
+    Expression<String>? reflection,
+    Expression<DateTime>? cardSharedAt,
+    Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7788,6 +7983,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
       if (closedAt != null) 'closed_at': closedAt,
       if (reflectionCaptureId != null)
         'reflection_capture_id': reflectionCaptureId,
+      if (declaration != null) 'declaration': declaration,
+      if (reflection != null) 'reflection': reflection,
+      if (cardSharedAt != null) 'card_shared_at': cardSharedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7798,6 +7997,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
     Value<DateTime?>? committedAt,
     Value<DateTime?>? closedAt,
     Value<String?>? reflectionCaptureId,
+    Value<String?>? declaration,
+    Value<String?>? reflection,
+    Value<DateTime?>? cardSharedAt,
+    Value<DateTime?>? updatedAt,
     Value<int>? rowid,
   }) {
     return DayLogsCompanion(
@@ -7806,6 +8009,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
       committedAt: committedAt ?? this.committedAt,
       closedAt: closedAt ?? this.closedAt,
       reflectionCaptureId: reflectionCaptureId ?? this.reflectionCaptureId,
+      declaration: declaration ?? this.declaration,
+      reflection: reflection ?? this.reflection,
+      cardSharedAt: cardSharedAt ?? this.cardSharedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7830,6 +8037,18 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
         reflectionCaptureId.value,
       );
     }
+    if (declaration.present) {
+      map['declaration'] = Variable<String>(declaration.value);
+    }
+    if (reflection.present) {
+      map['reflection'] = Variable<String>(reflection.value);
+    }
+    if (cardSharedAt.present) {
+      map['card_shared_at'] = Variable<DateTime>(cardSharedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7844,6 +8063,10 @@ class DayLogsCompanion extends UpdateCompanion<DayLog> {
           ..write('committedAt: $committedAt, ')
           ..write('closedAt: $closedAt, ')
           ..write('reflectionCaptureId: $reflectionCaptureId, ')
+          ..write('declaration: $declaration, ')
+          ..write('reflection: $reflection, ')
+          ..write('cardSharedAt: $cardSharedAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -13444,6 +13667,10 @@ typedef $$DayLogsTableCreateCompanionBuilder =
       Value<DateTime?> committedAt,
       Value<DateTime?> closedAt,
       Value<String?> reflectionCaptureId,
+      Value<String?> declaration,
+      Value<String?> reflection,
+      Value<DateTime?> cardSharedAt,
+      Value<DateTime?> updatedAt,
       Value<int> rowid,
     });
 typedef $$DayLogsTableUpdateCompanionBuilder =
@@ -13453,6 +13680,10 @@ typedef $$DayLogsTableUpdateCompanionBuilder =
       Value<DateTime?> committedAt,
       Value<DateTime?> closedAt,
       Value<String?> reflectionCaptureId,
+      Value<String?> declaration,
+      Value<String?> reflection,
+      Value<DateTime?> cardSharedAt,
+      Value<DateTime?> updatedAt,
       Value<int> rowid,
     });
 
@@ -13487,6 +13718,26 @@ class $$DayLogsTableFilterComposer
 
   ColumnFilters<String> get reflectionCaptureId => $composableBuilder(
     column: $table.reflectionCaptureId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get declaration => $composableBuilder(
+    column: $table.declaration,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reflection => $composableBuilder(
+    column: $table.reflection,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get cardSharedAt => $composableBuilder(
+    column: $table.cardSharedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -13524,6 +13775,26 @@ class $$DayLogsTableOrderingComposer
     column: $table.reflectionCaptureId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get declaration => $composableBuilder(
+    column: $table.declaration,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reflection => $composableBuilder(
+    column: $table.reflection,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get cardSharedAt => $composableBuilder(
+    column: $table.cardSharedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DayLogsTableAnnotationComposer
@@ -13553,6 +13824,24 @@ class $$DayLogsTableAnnotationComposer
     column: $table.reflectionCaptureId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get declaration => $composableBuilder(
+    column: $table.declaration,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reflection => $composableBuilder(
+    column: $table.reflection,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get cardSharedAt => $composableBuilder(
+    column: $table.cardSharedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$DayLogsTableTableManager
@@ -13588,6 +13877,10 @@ class $$DayLogsTableTableManager
                 Value<DateTime?> committedAt = const Value.absent(),
                 Value<DateTime?> closedAt = const Value.absent(),
                 Value<String?> reflectionCaptureId = const Value.absent(),
+                Value<String?> declaration = const Value.absent(),
+                Value<String?> reflection = const Value.absent(),
+                Value<DateTime?> cardSharedAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayLogsCompanion(
                 date: date,
@@ -13595,6 +13888,10 @@ class $$DayLogsTableTableManager
                 committedAt: committedAt,
                 closedAt: closedAt,
                 reflectionCaptureId: reflectionCaptureId,
+                declaration: declaration,
+                reflection: reflection,
+                cardSharedAt: cardSharedAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -13604,6 +13901,10 @@ class $$DayLogsTableTableManager
                 Value<DateTime?> committedAt = const Value.absent(),
                 Value<DateTime?> closedAt = const Value.absent(),
                 Value<String?> reflectionCaptureId = const Value.absent(),
+                Value<String?> declaration = const Value.absent(),
+                Value<String?> reflection = const Value.absent(),
+                Value<DateTime?> cardSharedAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayLogsCompanion.insert(
                 date: date,
@@ -13611,6 +13912,10 @@ class $$DayLogsTableTableManager
                 committedAt: committedAt,
                 closedAt: closedAt,
                 reflectionCaptureId: reflectionCaptureId,
+                declaration: declaration,
+                reflection: reflection,
+                cardSharedAt: cardSharedAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

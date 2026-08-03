@@ -17,6 +17,11 @@ class SaaraGroups extends Table {
 
 /// §3.6 DayLog — one row per day, keyed by date. Drives the morning-brief /
 /// evening-review rhythm (§7.3, §7.4). `committed_at` set on "Commit to today".
+///
+/// Unlike device-local ritual *settings* (times, mandate), the day's own record
+/// — the morning **declaration**, the evening **restoration** line, and whether
+/// a **card was shared** — is part of your day and **syncs** across devices
+/// (§9). `updated_at` drives the last-writer-wins merge.
 class DayLogs extends Table {
   // Local calendar date, 'YYYY-MM-DD' (date-only key, no time zone drift).
   TextColumn get date => text()();
@@ -24,6 +29,20 @@ class DayLogs extends Table {
   DateTimeColumn get committedAt => dateTime().nullable()();
   DateTimeColumn get closedAt => dateTime().nullable()();
   TextColumn get reflectionCaptureId => text().nullable()();
+
+  /// §7.3 the morning declaration — the word you give for the day, in your own
+  /// voice. Synced (LWW), so it reads the same on every device.
+  TextColumn get declaration => text().nullable()();
+
+  /// §7.4 the evening restoration line — one honest line to close on. Synced.
+  TextColumn get reflection => text().nullable()();
+
+  /// §13 when a Day Card was last shared for this day, so any device can show
+  /// "you already shared a card today — revise?" rather than duplicate it.
+  DateTimeColumn get cardSharedAt => dateTime().nullable()();
+
+  /// LWW clock for the sync merge.
+  DateTimeColumn get updatedAt => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {date};

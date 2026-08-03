@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -46,9 +45,9 @@ class EveningReviewScreen extends ConsumerWidget {
               final areas =
                   ref.read(activeAreasProvider).valueOrNull ?? const <Area>[];
               final key = DateFormat('yyyy-MM-dd').format(day);
-              final settings = ref.read(appSettingsProvider);
-              final declaration = await settings.ritualDeclaration(key);
-              final restoration = await settings.ritualReflection(key);
+              final log = await ref.read(appDatabaseProvider).dayLogFor(key);
+              final declaration = log?.declaration;
+              final restoration = log?.reflection;
               if (!context.mounted) return;
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -182,11 +181,7 @@ class EveningReviewScreen extends ConsumerWidget {
   ) async {
     final db = ref.read(appDatabaseProvider);
     final key = DateFormat('yyyy-MM-dd').format(day);
-    await db
-        .into(db.dayLogs)
-        .insertOnConflictUpdate(
-          DayLogsCompanion.insert(date: key, closedAt: Value(DateTime.now())),
-        );
+    await db.markDayClosed(key);
     if (context.mounted) Navigator.of(context).pop();
   }
 }
@@ -347,14 +342,23 @@ class _ReflectionFieldState extends ConsumerState<_ReflectionField> {
   }
 
   Future<void> _load() async {
-    final v = await ref.read(appSettingsProvider).ritualReflection(_key);
+    final db = ref.read(appDatabaseProvider);
+    var v = (await db.dayLogFor(_key))?.reflection;
+    // Migrate an older device-local value into the synced day record.
+    if (v == null || v.isEmpty) {
+      final legacy = await ref.read(appSettingsProvider).ritualReflection(_key);
+      if (legacy != null && legacy.isNotEmpty) {
+        v = legacy;
+        await db.setDayReflection(_key, legacy);
+      }
+    }
     if (mounted && v != null && v.isNotEmpty) _controller.text = v;
   }
 
   void _onChanged(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      ref.read(appSettingsProvider).setRitualReflection(_key, v);
+      ref.read(appDatabaseProvider).setDayReflection(_key, v);
     });
   }
 

@@ -166,7 +166,29 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
   final _captureKey = GlobalKey();
   bool _busy = false;
 
+  /// When a card was last shared for this day (from any device) — so we can say
+  /// "you already shared one — revise?" instead of silently duplicating.
+  DateTime? _alreadySharedAt;
+
   DayCardData get _d => widget.data;
+
+  String get _dateKey => DateFormat('yyyy-MM-dd').format(_d.day);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSharedStamp();
+  }
+
+  Future<void> _loadSharedStamp() async {
+    final log = await ref.read(appDatabaseProvider).dayLogFor(_dateKey);
+    if (mounted) setState(() => _alreadySharedAt = log?.cardSharedAt);
+  }
+
+  Future<void> _stampShared() async {
+    await ref.read(appDatabaseProvider).markCardShared(_dateKey);
+    if (mounted) setState(() => _alreadySharedAt = DateTime.now());
+  }
 
   Future<void> _shareCard() async {
     setState(() => _busy = true);
@@ -205,6 +227,7 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
         await file.writeAsBytes(bytes);
         await Share.shareXFiles([XFile(file.path)], text: _messageText());
       }
+      await _stampShared();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -222,6 +245,7 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
       text: _messageText(),
       subject: 'My day',
     );
+    await _stampShared();
   }
 
   String _areaSummary() =>
@@ -319,6 +343,37 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
     );
   }
 
+  /// "You already shared a card today — revise?" so a second share reads as a
+  /// deliberate update, not a duplicate. Reflects a share from any device.
+  Widget _alreadySharedNote() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.history, size: 18, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'You already shared a card for this day at '
+              '${DateFormat('h:mm a').format(_alreadySharedAt!)}. '
+              'Sharing again sends an updated one.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -336,6 +391,7 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
             ),
             children: [
               _freshnessNote(),
+              if (_alreadySharedAt != null) _alreadySharedNote(),
               Center(
                 child: _FlipCard(
                   front: _DayFace(data: _d, open: true),

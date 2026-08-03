@@ -45,6 +45,9 @@ class LedgerSyncService {
     // phone number to call/WhatsApp — is usable on the other (§9). This is the
     // only channel their number ever crosses; it never goes through Google.
     final participants = await db.select(db.taskParticipants).get();
+    // The day's record — declaration, restoration, shared-card stamp — travels
+    // too, so your morning word reads the same on every device (§7/§9).
+    final days = await db.select(db.dayLogs).get();
 
     // Make sure this device names itself before exporting, so the other side
     // learns "Desktop"/"Mobile" for the entries we wrote.
@@ -65,6 +68,7 @@ class LedgerSyncService {
       'areas': [for (final a in areas) a.toJson()],
       'results': [for (final r in results) r.toJson()],
       'participants': [for (final p in participants) p.toJson()],
+      'dayLogs': [for (final d in days) d.toJson()],
     };
   }
 
@@ -340,6 +344,57 @@ class LedgerSyncService {
           summary.results++;
         }
       }
+      // Day records. Keyed by date (not id), so _isNewer doesn't fit — merge
+      // field-by-field so a declaration set on one device and a close set on
+      // another both survive; a conflict on the *same* field resolves by
+      // recency (updated_at). No id, so nothing here is provenance-bearing.
+      for (final j in (bundle['dayLogs'] as List? ?? const [])) {
+        final d = DayLog.fromJson(
+          j as Map<String, dynamic>,
+          serializer: _serializer,
+        );
+        final mine = await (db.select(
+          db.dayLogs,
+        )..where((x) => x.date.equals(d.date))).getSingleOrNull();
+        final mineAt = mine?.updatedAt;
+        final theirsAt = d.updatedAt;
+        final incomingNewer =
+            mineAt == null || (theirsAt != null && theirsAt.isAfter(mineAt));
+        await db.into(db.dayLogs).insertOnConflictUpdate(
+          DayLogsCompanion(
+            date: Value(d.date),
+            openedAt: _mergeField(mine?.openedAt, d.openedAt, incomingNewer),
+            committedAt: _mergeField(
+              mine?.committedAt,
+              d.committedAt,
+              incomingNewer,
+            ),
+            closedAt: _mergeField(mine?.closedAt, d.closedAt, incomingNewer),
+            reflectionCaptureId: _mergeField(
+              mine?.reflectionCaptureId,
+              d.reflectionCaptureId,
+              incomingNewer,
+            ),
+            declaration: _mergeField(
+              mine?.declaration,
+              d.declaration,
+              incomingNewer,
+            ),
+            reflection: _mergeField(
+              mine?.reflection,
+              d.reflection,
+              incomingNewer,
+            ),
+            cardSharedAt: _mergeField(
+              mine?.cardSharedAt,
+              d.cardSharedAt,
+              incomingNewer,
+            ),
+            updatedAt: Value(_latest(mineAt, theirsAt)),
+          ),
+        );
+        summary.dayLogs++;
+      }
       // Tasks. An incoming task whose Google id already exists locally under a
       // *different* local id is the same real item imported from Google on both
       // devices (an invite, a pushed task). We do NOT add a second row — we fold
@@ -549,6 +604,20 @@ class LedgerSyncService {
   /// the same millisecond is the one case this leaves unconverged — negligible
   /// at millisecond precision, and the ledger itself, which is append-only,
   /// converges regardless.)
+  /// Field-level merge for a keyed-by-date row: keep whichever side has a value,
+  /// and when both do, let the newer row win. Absent (null-on-both) stays null.
+  Value<T?> _mergeField<T>(T? mine, T? theirs, bool incomingNewer) {
+    if (theirs == null) return Value(mine);
+    if (mine == null) return Value(theirs);
+    return Value(incomingNewer ? theirs : mine);
+  }
+
+  DateTime? _latest(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
+
   Future<bool> _isNewer(
     TableInfo<Table, dynamic> table,
     String id,
@@ -615,8 +684,10 @@ class MergeSummary {
   int areas = 0;
   int results = 0;
   int participants = 0;
+  int dayLogs = 0;
 
-  int get total => tasks + ledgerEntries + areas + results + participants;
+  int get total =>
+      tasks + ledgerEntries + areas + results + participants + dayLogs;
   bool get isEmpty => total == 0;
 
   void add(MergeSummary other) {
@@ -625,6 +696,7 @@ class MergeSummary {
     areas += other.areas;
     results += other.results;
     participants += other.participants;
+    dayLogs += other.dayLogs;
   }
 
   @override
