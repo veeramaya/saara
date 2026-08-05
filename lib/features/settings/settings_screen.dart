@@ -148,8 +148,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             secondary: const Icon(Icons.flag_outlined),
             title: const Text('Make it a mandate'),
             subtitle: const Text(
-              "Open the due ritual on launch and don't move ahead until it's "
-              'done',
+              "Keep nudging you until the day is opened/closed — insistent, but "
+              "it won't stop your work",
             ),
             value: _mandate,
             onChanged: (v) async {

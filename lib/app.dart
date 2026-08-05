@@ -114,9 +114,8 @@ class _RootShellState extends ConsumerState<_RootShell>
 
   /// §7.3/§7.4 On launch: re-arm both daily rituals from saved settings (so the
   /// schedule survives a reboot/reinstall and reflects Settings without opening
-  /// them), then either route in from a notification tap or, if the user made
-  /// the rituals a mandate, open the one that's due and don't move ahead until
-  /// it's done.
+  /// them), then either route in from a notification tap or — if the rituals are
+  /// a mandate — *remind* about the one that's due.
   Future<void> _armAndGateRituals() async {
     if (!mounted) return;
     final settings = ref.read(appSettingsProvider);
@@ -128,18 +127,28 @@ class _RootShellState extends ConsumerState<_RootShell>
       eveningHour: evening.hour,
       eveningMinute: evening.minute,
     );
-    // A tap that launched us wins — open exactly what they tapped, no gate.
+    // A tap that launched us wins — open exactly what they tapped.
     if (_consumeTappedRitual()) return;
-    // Otherwise honor the mandate. Never gate a brand-new user mid-onboarding.
+    await _remindRitual();
+  }
+
+  bool _reminding = false;
+
+  /// The mandate, softened: it **won't stop your work** — it keeps *popping up*
+  /// to say the day isn't opened/closed yet, and you can act or dismiss. Fires
+  /// on launch and again on each resume, so it stays insistent without gating.
+  Future<void> _remindRitual() async {
+    if (_reminding || !mounted) return;
+    final settings = ref.read(appSettingsProvider);
     if (!await settings.ritualMandate()) return;
-    if (!await settings.coachSeen()) return;
+    if (!await settings.coachSeen()) return; // never nag a user mid-onboarding
 
     final db = ref.read(appDatabaseProvider);
     final now = DateTime.now();
     final key = DateFormat('yyyy-MM-dd').format(now);
-    final log = await (db.select(
-      db.dayLogs,
-    )..where((d) => d.date.equals(key))).getSingleOrNull();
+    final log = await db.dayLogFor(key);
+    final morning = await settings.ritualMorning();
+    final evening = await settings.ritualEvening();
     final morningAt = DateTime(
       now.year,
       now.month,
@@ -154,21 +163,44 @@ class _RootShellState extends ConsumerState<_RootShell>
       evening.hour,
       evening.minute,
     );
-    if (now.isAfter(morningAt) && log?.committedAt == null && mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => const _MandatoryRitual(child: MorningBriefScreen()),
-        ),
-      );
+    if (now.isAfter(morningAt) && log?.committedAt == null) {
+      await _remindOne('Open your day', const MorningBriefScreen());
+    } else if (now.isAfter(eveningAt) && log?.closedAt == null) {
+      await _remindOne('Close your day', const EveningReviewScreen());
     }
-    if (now.isAfter(eveningAt) && log?.closedAt == null && mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => const _MandatoryRitual(child: EveningReviewScreen()),
+  }
+
+  Future<void> _remindOne(String cta, Widget screen) async {
+    if (!mounted) return;
+    _reminding = true;
+    try {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('$cta?'),
+          content: const Text(
+            "Your ritual for today isn't done yet. This won't stop your work — "
+            "it's just a nudge until you get to it.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(cta),
+            ),
+          ],
         ),
       );
+      if (go == true && mounted) {
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => screen));
+      }
+    } finally {
+      _reminding = false;
     }
   }
 
@@ -197,6 +229,8 @@ class _RootShellState extends ConsumerState<_RootShell>
       // A "Share → Saara" brings us to the foreground, so resume is when a
       // shared ledger file is waiting to be picked up (§9).
       _checkIncomingShare();
+      // Keep the mandate nudge insistent: re-check each time we come back.
+      _remindRitual();
     }
   }
 
@@ -418,17 +452,4 @@ class _RootShellState extends ConsumerState<_RootShell>
       ),
     );
   }
-}
-
-/// §7 A ritual opened as a mandate — "without which you don't move ahead". The
-/// system back button is blocked so the only way forward is the ritual's own
-/// CTA (Commit to today / Close the day), which pops programmatically. There is
-/// always that exit, so it insists without trapping.
-class _MandatoryRitual extends StatelessWidget {
-  const _MandatoryRitual({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) =>
-      PopScope(canPop: false, child: child);
 }
