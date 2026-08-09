@@ -31,22 +31,35 @@ class _StorageScreenState extends ConsumerState<StorageScreen> {
 
   Future<void> _load() async {
     setState(() => _busy = true);
-    final svc = ref.read(storageServiceProvider);
-    final usage = await svc.measure();
-    final largest = await svc.largest();
-    final dir = await svc.mediaDir();
-    final settings = ref.read(appSettingsProvider);
-    final retention = await settings.mediaRetentionDays();
-    final archive = await settings.archiveDir();
-    if (!mounted) return;
-    setState(() {
-      _usage = usage;
-      _largest = largest;
-      _dir = dir.path;
-      _retentionDays = retention;
-      _archiveDir = archive;
-      _busy = false;
-    });
+    try {
+      final svc = ref.read(storageServiceProvider);
+      final usage = await svc.measure();
+      final largest = await svc.largest();
+      final dir = await svc.mediaDir();
+      final settings = ref.read(appSettingsProvider);
+      final retention = await settings.mediaRetentionDays();
+      final archive = await settings.archiveDir();
+      if (!mounted) return;
+      setState(() {
+        _usage = usage;
+        _largest = largest;
+        _dir = dir.path;
+        _retentionDays = retention;
+        _archiveDir = archive;
+        _busy = false;
+      });
+    } catch (e) {
+      // Never leave the screen spinning: stop the loader and say what failed
+      // (a capture file we can't read, a decrypt error, etc.).
+      if (!mounted) return;
+      setState(() {
+        _usage = StorageUsage.empty;
+        _busy = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not read storage: $e')));
+    }
   }
 
   Future<void> _setArchiveDir(String? path) async {

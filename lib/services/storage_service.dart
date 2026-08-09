@@ -18,6 +18,18 @@ class StorageUsage {
     required this.captureCount,
   });
 
+  /// A zeroed reading — shown when measurement fails, so the screen renders
+  /// instead of spinning forever.
+  static final empty = StorageUsage(
+    imageBytes: 0,
+    videoBytes: 0,
+    audioBytes: 0,
+    orphanBytes: 0,
+    orphanCount: 0,
+    missingCount: 0,
+    captureCount: 0,
+  );
+
   final int imageBytes;
   final int videoBytes;
   final int audioBytes;
