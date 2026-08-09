@@ -60,6 +60,10 @@ class ScheduleCheckScreen extends ConsumerWidget {
               ),
             );
           }
+          // A repeating overlap (two recurring series, or a series vs a fixed
+          // item) collapses into ONE row, so moving/keeping it is a single
+          // action for the whole series — not the same decision N times.
+          final groups = _groupConflicts(conflicts);
           return ListView(
             // Add the system inset to the bottom so the last card's actions
             // clear the gesture nav bar on edge-to-edge Android.
@@ -73,15 +77,15 @@ class ScheduleCheckScreen extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
                 child: Text(
-                  '${conflicts.length} overlap'
-                  '${conflicts.length == 1 ? '' : 's'} in the next two weeks. '
+                  '${groups.length} overlap'
+                  '${groups.length == 1 ? '' : 's'} in the next two weeks. '
                   'Plenty of overlaps are deliberate — these are flagged so '
                   'nothing catches you out, not because they\'re wrong. '
                   'Open one to see it in your calendar, or keep it as it is.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),
-              for (final c in conflicts) _ConflictTile(conflict: c),
+              for (final g in groups) _ConflictTile(group: g),
             ],
           );
         },
@@ -90,9 +94,60 @@ class ScheduleCheckScreen extends ConsumerWidget {
   }
 }
 
+/// One or more conflicts that are really the *same* recurring overlap, so they
+/// can be resolved once. A group of size 1 is an ordinary one-off overlap.
+class _Group {
+  _Group(this.all);
+  final List<ScheduleConflict> all;
+  ScheduleConflict get rep => all.first;
+  int get count => all.length;
+
+  /// True when the [later] side is a recurring occurrence — so "move" can shift
+  /// the whole series rather than this one date.
+  bool get laterRecurs => rep.later.parentRecurringId != null;
+}
+
+/// Collapse conflicts so a repeating overlap is one row. Two recurring series
+/// group by their template pair; a series overlapping a fixed item groups by
+/// (series, fixed id); a plain one-off overlap stays on its own.
+List<_Group> _groupConflicts(List<ScheduleConflict> conflicts) {
+  String gkey(ScheduleConflict c) {
+    final e = c.earlier.parentRecurringId;
+    final l = c.later.parentRecurringId;
+    if (e != null && l != null) {
+      final s = [e, l]..sort();
+      return 'series:${s[0]}|${s[1]}';
+    }
+    if (e != null) {
+      final s = [e, c.later.id]..sort();
+      return 'mix:${s[0]}|${s[1]}';
+    }
+    if (l != null) {
+      final s = [c.earlier.id, l]..sort();
+      return 'mix:${s[0]}|${s[1]}';
+    }
+    return 'one:${c.key}';
+  }
+
+  final map = <String, List<ScheduleConflict>>{};
+  for (final c in conflicts) {
+    (map[gkey(c)] ??= []).add(c);
+  }
+  final groups = map.values.map((l) {
+    l.sort(
+      (a, b) => a.earlier.scheduledStart!.compareTo(b.earlier.scheduledStart!),
+    );
+    return _Group(l);
+  }).toList()..sort(
+    (a, b) =>
+        a.rep.earlier.scheduledStart!.compareTo(b.rep.earlier.scheduledStart!),
+  );
+  return groups;
+}
+
 class _ConflictTile extends ConsumerStatefulWidget {
-  const _ConflictTile({required this.conflict});
-  final ScheduleConflict conflict;
+  const _ConflictTile({required this.group});
+  final _Group group;
 
   @override
   ConsumerState<_ConflictTile> createState() => _ConflictTileState();
@@ -106,7 +161,7 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
   /// Land the user on the day of the overlap so they can judge it in context —
   /// seeing what else is around it is usually what decides whether it matters.
   void _openInCalendar() {
-    final day = widget.conflict.earlier.scheduledStart!;
+    final day = widget.group.rep.earlier.scheduledStart!;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CalendarScreen(
@@ -120,19 +175,30 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
   /// "This overlap is fine." Saara records the answer and stops raising this
   /// pair — multitasking is a legitimate choice, not a problem to be resolved.
   Future<void> _keepBoth() async {
-    final c = widget.conflict;
+    final g = widget.group;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
-    await ref.read(appSettingsProvider).keepOverlap(c.key);
+    final settings = ref.read(appSettingsProvider);
+    // Keep every occurrence of this overlap in one go, so a repeating one is
+    // accepted once — not the same answer every day.
+    for (final c in g.all) {
+      await settings.keepOverlap(c.key);
+    }
     ref.invalidate(scheduleConflictsProvider);
     if (!mounted) return;
     messenger.showSnackBar(
       SnackBar(
-        content: const Text('Kept as is — Saara won\'t raise this one again.'),
+        content: Text(
+          g.count > 1
+              ? 'Kept as is — all ${g.count} dates. Saara won\'t raise this again.'
+              : 'Kept as is — Saara won\'t raise this one again.',
+        ),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
-            await ref.read(appSettingsProvider).unkeepOverlap(c.key);
+            for (final c in g.all) {
+              await settings.unkeepOverlap(c.key);
+            }
             ref.invalidate(scheduleConflictsProvider);
           },
         ),
@@ -141,28 +207,47 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
   }
 
   Future<void> _apply() async {
-    final c = widget.conflict;
+    final g = widget.group;
+    final c = g.rep;
     setState(() => _busy = true);
     final db = ref.read(appDatabaseProvider);
     final now = DateTime.now();
     try {
-      await (db.update(db.tasks)..where((t) => t.id.equals(c.later.id))).write(
-        TasksCompanion(
-          scheduledStart: Value(c.suggestedStart),
-          dueDate: Value(c.suggestedStart),
-          updatedAt: Value(now),
-        ),
-      );
-      if (c.later.reminderOffsets != null &&
-          c.later.reminderOffsets!.isNotEmpty) {
-        await NotificationService.instance.scheduleTaskReminder(
-          taskId: c.later.id,
-          title: c.later.title,
-          when: c.suggestedStart,
-          offsetsMinutes: c.later.reminderOffsets!,
+      if (g.laterRecurs) {
+        // Move the WHOLE series to the free time-of-day — one action clears
+        // every repeat of this overlap, instead of rescheduling each date.
+        await ref
+            .read(taskDaoProvider)
+            .applyToWholeSeries(
+              templateId: c.later.parentRecurringId!,
+              shared: const TasksCompanion(),
+              newHour: c.suggestedStart.hour,
+              newMinute: c.suggestedStart.minute,
+            );
+        ref.invalidate(materializeRecurringProvider);
+      } else {
+        await (db.update(
+          db.tasks,
+        )..where((t) => t.id.equals(c.later.id))).write(
+          TasksCompanion(
+            scheduledStart: Value(c.suggestedStart),
+            dueDate: Value(c.suggestedStart),
+            updatedAt: Value(now),
+          ),
         );
+        if (c.later.reminderOffsets != null &&
+            c.later.reminderOffsets!.isNotEmpty) {
+          await NotificationService.instance.scheduleTaskReminder(
+            taskId: c.later.id,
+            title: c.later.title,
+            when: c.suggestedStart,
+            offsetsMinutes: c.later.reminderOffsets!,
+          );
+        }
       }
       ref.invalidate(scheduleConflictsProvider);
+      ref.invalidate(allTasksProvider);
+      ref.invalidate(tasksBetweenProvider);
       ref.invalidate(
         tasksForDayProvider(DateTime(now.year, now.month, now.day)),
       );
@@ -174,10 +259,13 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
         } catch (_) {}
       }());
       if (mounted) {
+        final at = DateFormat('h:mm a').format(c.suggestedStart);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Moved “${c.later.title}” to ${_fmt(c.suggestedStart)}',
+              g.laterRecurs
+                  ? 'Moved every “${c.later.title}” to $at'
+                  : 'Moved “${c.later.title}” to ${_fmt(c.suggestedStart)}',
             ),
           ),
         );
@@ -194,7 +282,8 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
 
   @override
   Widget build(BuildContext context) {
-    final c = widget.conflict;
+    final g = widget.group;
+    final c = g.rep;
     final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
@@ -208,7 +297,7 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Overlap',
+                    g.count > 1 ? 'Overlap · repeats ${g.count}×' : 'Overlap',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -217,6 +306,17 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
             const SizedBox(height: 8),
             Text('“${c.earlier.title}” — ${_fmt(c.earlier.scheduledStart!)}'),
             Text('“${c.later.title}” — ${_fmt(c.later.scheduledStart!)}'),
+            if (g.count > 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Repeats ${g.count} times in the next two weeks — one choice '
+                  'here settles them all.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             const SizedBox(height: 14),
             // The two real choices, given equal weight: look at it, or accept
             // it. Neither is Saara telling the user what their priorities are.
@@ -253,8 +353,11 @@ class _ConflictTileState extends ConsumerState<_ConflictTile> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(
-                        'Or move “${c.later.title}” to '
-                        '${DateFormat('h:mm a').format(c.suggestedStart)}',
+                        g.laterRecurs
+                            ? 'Or move the whole “${c.later.title}” series to '
+                                  '${DateFormat('h:mm a').format(c.suggestedStart)}'
+                            : 'Or move “${c.later.title}” to '
+                                  '${DateFormat('h:mm a').format(c.suggestedStart)}',
                         style: TextStyle(color: scheme.onSurfaceVariant),
                       ),
               ),
