@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- §8 notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- §8 exact daily-agent alarms (07:00 / 21:00) -->
@@ -25,7 +26,13 @@
     <application
         android:label="Saara"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        tools:replace="android:allowBackup"><!--
+        §1.4 No Android Auto Backup. Restoring the app's encrypted secure-storage
+        onto a reinstall — where the Keystore key is regenerated — fails to
+        decrypt (BadPaddingException). Saara is local-first with its own Export
+        and device sync, so it owns backup; Google's cloud backup is off. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
