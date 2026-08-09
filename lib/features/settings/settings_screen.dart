@@ -65,7 +65,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _morning = TimeOfDay(hour: m.hour, minute: m.minute);
       _evening = TimeOfDay(hour: e.hour, minute: e.minute);
       _mandate = mandate;
-      _appVersion = info.version;
+      // Show the build number too — the name (1.4.23) stays the same across
+      // builds, so it's the number that tells you which one you're on.
+      _appVersion = '${info.version} (${info.buildNumber})';
     });
   }
 
