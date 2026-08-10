@@ -467,9 +467,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                               ? 'No date/time'
                               : 'No due date')
                         : DateFormat(
-                            _kind == TaskKind.event
-                                ? 'EEE, MMM d · h:mm a'
-                                : 'EEE, MMM d',
+                            'EEE, MMM d · h:mm a',
                           ).format(_scheduledStart!),
                     onTap: _pickDateTime,
                   ),
@@ -496,40 +494,40 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                     ),
                   const SizedBox(height: 12),
 
-                  // Duration/end is a start→end span — an event concept. A task
-                  // carries a due date only, so this shows only for events.
-                  if (_kind == TaskKind.event) ...[
-                    _FieldLabel('Duration', uncertain.contains('durationMin')),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        for (final m in const [15, 30, 45, 60, 90, 120])
-                          ChoiceChip(
-                            label: Text(_durationLabel(m)),
-                            selected: _durationMin == m,
-                            onSelected: (_) => setState(
-                              () => _durationMin = _durationMin == m ? null : m,
-                            ),
+                  // Duration is optional for a task too — a task only occupies
+                  // the clock (and so can overlap) when it has a duration; with
+                  // just a date it never conflicts. Editable here, so a repeating
+                  // task's time block can be changed or cleared to fix an overlap.
+                  _FieldLabel('Duration', uncertain.contains('durationMin')),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final m in const [15, 30, 45, 60, 90, 120])
+                        ChoiceChip(
+                          label: Text(_durationLabel(m)),
+                          selected: _durationMin == m,
+                          onSelected: (_) => setState(
+                            () => _durationMin = _durationMin == m ? null : m,
                           ),
-                        // Explicit end time — the natural way to say "6 to 11 PM".
-                        // Sets duration from start→end, so both stay consistent.
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.schedule, size: 16),
-                          label: Text(_endsLabel()),
-                          onPressed: _pickEnd,
                         ),
-                        if (_durationMin != null)
-                          IconButton(
-                            tooltip: 'Clear duration',
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () => setState(() => _durationMin = null),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                  ],
+                      // Explicit end time — the natural way to say "6 to 11 PM".
+                      // Sets duration from start→end, so both stay consistent.
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.schedule, size: 16),
+                        label: Text(_endsLabel()),
+                        onPressed: _pickEnd,
+                      ),
+                      if (_durationMin != null)
+                        IconButton(
+                          tooltip: 'Clear duration',
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() => _durationMin = null),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
                   _FieldLabel('Location', false),
                   TextField(
@@ -638,22 +636,23 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                     ],
                   ),
                   // Pick exact days for any pattern the presets don't cover.
+                  // Label on its own line + a Wrap of toggles, so all 7 days
+                  // (incl. Sunday) fit in portrait — a Row clipped the last one.
                   const SizedBox(height: 8),
-                  Row(
+                  Text(
+                    'Repeat on',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
                     children: [
-                      Text(
-                        'Repeat on',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(width: 10),
                       for (var i = 0; i < _dayCodes.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: _DayToggle(
-                            label: _dayLabels[i],
-                            selected: _selectedDays.contains(_dayCodes[i]),
-                            onTap: () => _toggleDay(_dayCodes[i]),
-                          ),
+                        _DayToggle(
+                          label: _dayLabels[i],
+                          selected: _selectedDays.contains(_dayCodes[i]),
+                          onTap: () => _toggleDay(_dayCodes[i]),
                         ),
                     ],
                   ),
@@ -1183,14 +1182,12 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       helpText: isEvent ? null : 'Due date',
     );
     if (date == null || !mounted) return;
-    // An event has a start *time*; a task's due date does not — skip the clock.
-    TimeOfDay? time;
-    if (isEvent) {
-      time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(_scheduledStart ?? now),
-      );
-    }
+    // A time is offered for tasks too (their end/due time). It only becomes a
+    // clock-occupying block — able to overlap — once a duration is added.
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_scheduledStart ?? now),
+    );
     setState(() {
       _scheduledStart = DateTime(
         date.year,
@@ -1557,7 +1554,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         areaId: Value(_areaId),
         scheduledStart: Value(startVal),
         dueDate: Value(dueVal),
-        durationMin: Value(isEvent ? _durationMin : null),
+        durationMin: Value(_durationMin),
         rrule: Value(_effectiveRrule),
         reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
         meetingLink: Value(
@@ -1757,7 +1754,11 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     // A one-off task is a deadline: it carries a DUE date and no start (matching
     // Google Tasks, which is due-date only). Events keep start + end; a recurring
     // template keeps a start anchor for the RRULE to expand from.
-    final dueOnly = !isEvent && !isRecurring;
+    // A one-off task with no duration is a pure deadline: it keeps a due date
+    // and no start, so it never occupies the clock and can't overlap. Give it a
+    // duration (or make it an event / recurring) and it becomes a real time
+    // block with a start, which the schedule check can then flag.
+    final dueOnly = !isEvent && !isRecurring && _durationMin == null;
     final startVal = dueOnly ? null : anchor;
     final dueVal = anchor;
 
@@ -1793,7 +1794,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       status: const Value(TaskStatus.created),
       scheduledStart: Value(startVal),
       dueDate: Value(dueVal),
-      durationMin: Value(isEvent ? _durationMin : null),
+      durationMin: Value(_durationMin),
       rrule: Value(_effectiveRrule),
       reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
       meetingLink: Value(
