@@ -490,7 +490,12 @@ class _RestoreCard extends ConsumerWidget {
           left: 16,
           right: 16,
           top: 16,
-          bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
+          // Clear both the keyboard (viewInsets) and the Android gesture bar
+          // (padding) so the buttons are never hidden behind either.
+          bottom:
+              16 +
+              MediaQuery.of(ctx).viewInsets.bottom +
+              MediaQuery.of(ctx).padding.bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

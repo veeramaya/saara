@@ -66,7 +66,14 @@ class _RecordAudioSheetState extends State<RecordAudioSheet> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.all(28),
+      // The sheet can't be dismissed by drag, so "Stop & save" is the only way
+      // out — it must clear the Android gesture bar, not sit behind it.
+      padding: EdgeInsets.fromLTRB(
+        28,
+        28,
+        28,
+        28 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

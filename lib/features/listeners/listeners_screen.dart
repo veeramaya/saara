@@ -424,7 +424,11 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
         20,
         20,
         20,
-        MediaQuery.of(context).viewInsets.bottom + 20,
+        // Clear the keyboard and the Android gesture bar so the submit button
+        // is never hidden behind either.
+        MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
