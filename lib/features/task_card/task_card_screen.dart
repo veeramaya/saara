@@ -623,91 +623,84 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
                     ),
                   const SizedBox(height: 12),
 
-                  // Repeat is task-only for now. Events are single occurrences
-                  // (Calendar recurrence is a later add): an event given a
-                  // repeat became a hidden, un-materialized recurring template
-                  // that vanished from every list. Hiding it here prevents that.
-                  if (_kind != TaskKind.event) ...[
-                    _FieldLabel('Repeat', uncertain.contains('rrule')),
+                  _FieldLabel('Repeat', uncertain.contains('rrule')),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final opt in _repeatOptions.entries)
+                        ChoiceChip(
+                          label: Text(opt.key),
+                          selected: _rrule == opt.value,
+                          onSelected: (_) => setState(() => _rrule = opt.value),
+                        ),
+                    ],
+                  ),
+                  // Pick exact days for any pattern the presets don't cover.
+                  // Label on its own line + a Wrap of toggles, so all 7 days
+                  // (incl. Sunday) fit in portrait — a Row clipped the last one.
+                  const SizedBox(height: 8),
+                  Text(
+                    'Repeat on',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      for (var i = 0; i < _dayCodes.length; i++)
+                        _DayToggle(
+                          label: _dayLabels[i],
+                          selected: _selectedDays.contains(_dayCodes[i]),
+                          onTap: () => _toggleDay(_dayCodes[i]),
+                        ),
+                    ],
+                  ),
+                  if (_selectedDays.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Repeats every week on '
+                        '${_dayCodes.where(_selectedDays.contains).map((d) => _dayName(d)).join(', ')}.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  // When a series repeats, say when it stops — otherwise it runs
+                  // forever, which is ambiguous and clutters a shared calendar.
+                  if (_rrule != null) ...[
+                    const SizedBox(height: 10),
+                    _FieldLabel('Ends', false),
                     Wrap(
                       spacing: 8,
                       children: [
-                        for (final opt in _repeatOptions.entries)
-                          ChoiceChip(
-                            label: Text(opt.key),
-                            selected: _rrule == opt.value,
-                            onSelected: (_) =>
-                                setState(() => _rrule = opt.value),
-                          ),
-                      ],
-                    ),
-                    // Pick exact days for any pattern the presets don't cover.
-                    // Label on its own line + a Wrap of toggles, so all 7 days
-                    // (incl. Sunday) fit in portrait — a Row clipped the last one.
-                    const SizedBox(height: 8),
-                    Text(
-                      'Repeat on',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        for (var i = 0; i < _dayCodes.length; i++)
-                          _DayToggle(
-                            label: _dayLabels[i],
-                            selected: _selectedDays.contains(_dayCodes[i]),
-                            onTap: () => _toggleDay(_dayCodes[i]),
-                          ),
-                      ],
-                    ),
-                    if (_selectedDays.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'Repeats every week on '
-                          '${_dayCodes.where(_selectedDays.contains).map((d) => _dayName(d)).join(', ')}.',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        ChoiceChip(
+                          label: const Text('Never'),
+                          selected: _repeatUntil == null,
+                          onSelected: (_) =>
+                              setState(() => _repeatUntil = null),
                         ),
-                      ),
-                    // When a series repeats, say when it stops — otherwise it runs
-                    // forever, which is ambiguous and clutters a shared calendar.
-                    if (_rrule != null) ...[
-                      const SizedBox(height: 10),
-                      _FieldLabel('Ends', false),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('Never'),
-                            selected: _repeatUntil == null,
-                            onSelected: (_) =>
-                                setState(() => _repeatUntil = null),
+                        ChoiceChip(
+                          avatar: Icon(
+                            Icons.event_outlined,
+                            size: 18,
+                            color: _repeatUntil != null
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.onSecondaryContainer
+                                : null,
                           ),
-                          ChoiceChip(
-                            avatar: Icon(
-                              Icons.event_outlined,
-                              size: 18,
-                              color: _repeatUntil != null
-                                  ? Theme.of(
-                                      context,
-                                    ).colorScheme.onSecondaryContainer
-                                  : null,
-                            ),
-                            label: Text(
-                              _repeatUntil == null
-                                  ? 'On a date…'
-                                  : 'Until ${DateFormat.yMMMd().format(_repeatUntil!)}',
-                            ),
-                            selected: _repeatUntil != null,
-                            onSelected: (_) => _pickRepeatUntil(),
+                          label: Text(
+                            _repeatUntil == null
+                                ? 'On a date…'
+                                : 'Until ${DateFormat.yMMMd().format(_repeatUntil!)}',
                           ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 12),
+                          selected: _repeatUntil != null,
+                          onSelected: (_) => _pickRepeatUntil(),
+                        ),
+                      ],
+                    ),
                   ],
+                  const SizedBox(height: 12),
 
                   _FieldLabel('Area', uncertain.contains('area')),
                   _AreaChips(
@@ -1562,7 +1555,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         scheduledStart: Value(startVal),
         dueDate: Value(dueVal),
         durationMin: Value(_durationMin),
-        rrule: Value(isEvent ? null : _effectiveRrule),
+        rrule: Value(_effectiveRrule),
         reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
         meetingLink: Value(
           _meetingLinkController.text.trim().isEmpty
@@ -1601,7 +1594,11 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     if (effectiveWhen != null) {
       ref.invalidate(
         tasksForDayProvider(
-          DateTime(effectiveWhen.year, effectiveWhen.month, effectiveWhen.day),
+          DateTime(
+            effectiveWhen.year,
+            effectiveWhen.month,
+            effectiveWhen.day,
+          ),
         ),
       );
     }
@@ -1749,7 +1746,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     // RRULE to expand from. If the user gave no date, anchor it to today so
     // instances (incl. today's) generate. One-off tasks keep a null date.
     // Events are single occurrences (Calendar recurrence is a later add).
-    final isRecurring = !isEvent && _rrule != null;
+    final isRecurring = _rrule != null;
     final anchor =
         _scheduledStart ??
         (isRecurring ? DateTime(now.year, now.month, now.day, 9) : null);
@@ -1798,7 +1795,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       scheduledStart: Value(startVal),
       dueDate: Value(dueVal),
       durationMin: Value(_durationMin),
-      rrule: Value(isEvent ? null : _effectiveRrule),
+      rrule: Value(_effectiveRrule),
       reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
       meetingLink: Value(
         _meetingLinkController.text.trim().isEmpty

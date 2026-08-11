@@ -119,6 +119,10 @@ class RecurringEngine {
       title: template.title,
       notes: Value(template.notes),
       areaId: Value(template.areaId),
+      // A repeating event must generate *event* occurrences, not tasks — the
+      // kind is part of the series' identity and drives which Google surface
+      // (Calendar vs Tasks) each date syncs to.
+      kind: Value(template.kind),
       status: const Value(TaskStatus.created),
       scheduledStart: Value(start),
       durationMin: Value(template.durationMin),
