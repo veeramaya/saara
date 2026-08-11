@@ -586,6 +586,12 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
             ..where((t) => t.deletedAt.isNull())
             ..where((t) => t.gcalEventId.isNull())
             ..where((t) => t.scheduledStart.isNotNull())
+            // A repeating series syncs as its *rule* (one master event carrying
+            // the RRULE); the generated per-date occurrences — now that a
+            // repeating event stamps kind=event on each one — must be excluded
+            // here, or every occurrence would be pushed as its own Calendar
+            // event alongside the master (the stray-copy duplication bug).
+            ..where((t) => t.parentRecurringId.isNull())
             // Drafts stay off Google — see [tasksToPush].
             ..where(
               (t) => t.publicationState.equalsValue(PublicationState.released),
@@ -600,6 +606,9 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   Future<List<Task>> linkedEvents() =>
       (select(tasks)
             ..where((t) => t.gcalEventId.isNotNull())
+            // Same exclusion as [eventsToPush]: reconcile the series through its
+            // master rule, never through the per-date occurrences.
+            ..where((t) => t.parentRecurringId.isNull())
             ..where(
               (t) => t.kind.equalsValue(TaskKind.event) | _isRecurringRule(t),
             ))
