@@ -497,6 +497,35 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     );
   }
 
+  /// The invitation as pages: the invite face, then any long content (notes)
+  /// that wouldn't fit — so it rolls onto its own page instead of clipping.
+  List<Widget> _invitationPages() {
+    final p = _palette;
+    final t = widget.task;
+    final pages = <Widget>[_invitationCard()];
+    if (_on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) {
+      pages.add(
+        _detailPage(
+          p,
+          Icons.notes_outlined,
+          'DETAILS',
+          Text(
+            t.notes!.trim(),
+            maxLines: 9,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: p.ink, fontSize: 13.5, height: 1.35),
+          ),
+        ),
+      );
+    }
+    return pages;
+  }
+
+  /// Pages for whichever mode is active — the single source the preview,
+  /// composite and HTML export all build from.
+  List<Widget> _pagesForMode() =>
+      _mode == ShareMode.report ? _reportPages() : _invitationPages();
+
   /// The report as an ordered list of card pages: a summary, then a page each
   /// for the longer sections that are turned on and present.
   List<Widget> _reportPages() {
@@ -698,10 +727,9 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     // out, nothing to do — it simply appears as an off chip to turn on.
 
     final offered = _offered(_mode);
-    final isReport = _mode == ShareMode.report;
-    final pages = isReport ? _reportPages() : null;
-    final multi = pages != null && pages.length > 1;
-    if (_page >= (pages?.length ?? 1)) _page = 0;
+    final pages = _pagesForMode();
+    final multi = pages.length > 1;
+    if (_page >= pages.length) _page = 0;
 
     // The visible preview, and the off-screen capture target.
     final Widget preview;
@@ -721,20 +749,20 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
           offset: const Offset(-5000, 0),
           child: RepaintBoundary(
             key: _cardKey,
-            child: ReportComposite(pages: _reportPages(), style: _style),
+            child: ReportComposite(pages: _pagesForMode(), style: _style),
           ),
         ),
       );
     } else {
       preview = RepaintBoundary(
         key: _cardKey,
-        child: isReport ? pages!.first : _invitationCard(),
+        child: pages.first,
       );
     }
 
     // Per-page off-screen targets for the HTML flipbook export (fresh
     // instances — a widget can't sit in the preview and here at once).
-    final htmlPages = isReport ? _reportPages() : [_invitationCard()];
+    final htmlPages = _pagesForMode();
     if (_pageKeys.length != htmlPages.length) {
       _pageKeys = [for (var i = 0; i < htmlPages.length; i++) GlobalKey()];
     }
@@ -1092,15 +1120,8 @@ List<Widget> _invitationBody(
     ],
     if (on(_Field.location) && (t.locationName ?? '').trim().isNotEmpty)
       _iconLine(Icons.place_outlined, t.locationName!, p),
-    if (on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) ...[
-      const SizedBox(height: 8),
-      Text(
-        t.notes!.trim(),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: p.muted, fontSize: 13, height: 1.25),
-      ),
-    ],
+    // Notes are NOT shown here — if selected they roll onto their own page
+    // (see _invitationPages) so nothing clips on the invite face.
     if ((tagline ?? '').trim().isNotEmpty) _taglineLine(tagline!, p),
   ];
 }

@@ -55,6 +55,12 @@ class LedgerSyncService {
     final deviceId = await db.deviceId();
     await settings.registerThisDevice(deviceId);
 
+    // "Keep both" overlap decisions travel too. They're keyed by task-id pairs
+    // (stable across devices), so a pair you've deliberately allowed on one
+    // device stops re-flagging on the other — and survives a clean+resync,
+    // instead of every dismissed overlap popping back up (§8).
+    final keptOverlaps = await settings.keptOverlaps();
+
     return {
       'bundleFormat': bundleFormat,
       'schemaVersion': db.schemaVersion,
@@ -69,6 +75,7 @@ class LedgerSyncService {
       'results': [for (final r in results) r.toJson()],
       'participants': [for (final p in participants) p.toJson()],
       'dayLogs': [for (final d in days) d.toJson()],
+      'keptOverlaps': keptOverlaps.toList(),
     };
   }
 
@@ -394,6 +401,13 @@ class LedgerSyncService {
           ),
         );
         summary.dayLogs++;
+      }
+      // "Keep both" overlap decisions — union with ours. A pair allowed on any
+      // device stays allowed everywhere, so a dismissed overlap doesn't pop
+      // back up after a clean+resync (§8). Keys are task-id pairs, stable.
+      final keptSettings = AppSettings(db);
+      for (final key in (bundle['keptOverlaps'] as List? ?? const [])) {
+        await keptSettings.keepOverlap(key.toString());
       }
       // Tasks. An incoming task whose Google id already exists locally under a
       // *different* local id is the same real item imported from Google on both
