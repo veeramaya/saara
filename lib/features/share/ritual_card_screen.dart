@@ -13,6 +13,7 @@ import '../../domain/world_days.dart';
 import '../../providers.dart';
 import '../areas/area_icons.dart' as ai;
 import '../settings/lan_sync_screen.dart';
+import 'day_book_screen.dart';
 import 'share_card_deck.dart';
 import 'share_channels.dart';
 
@@ -352,7 +353,18 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Share your day')),
+      appBar: AppBar(
+        title: const Text('Share your day'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_stories_outlined),
+            tooltip: 'Day book',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DayBookScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           ListView(
@@ -376,8 +388,8 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
                   pageWidth: 380,
                   pageHeight: 466,
                   pages: [
-                    _DayFace(data: _d, open: true),
-                    _DayFace(data: _d, open: false),
+                    DayFace(data: _d, open: true),
+                    DayFace(data: _d, open: false),
                   ],
                 ),
               ),
@@ -440,8 +452,8 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
                 child: ReportComposite(
                   style: CardStyle.dark,
                   pages: [
-                    _DayFace(data: _d, open: true),
-                    _DayFace(data: _d, open: false),
+                    DayFace(data: _d, open: true),
+                    DayFace(data: _d, open: false),
                   ],
                 ),
               ),
@@ -454,8 +466,8 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
 }
 
 /// One face of the day — sunrise for the open, dusk for the close.
-class _DayFace extends StatelessWidget {
-  const _DayFace({required this.data, required this.open});
+class DayFace extends StatelessWidget {
+  const DayFace({super.key, required this.data, required this.open});
   final DayCardData data;
   final bool open;
 

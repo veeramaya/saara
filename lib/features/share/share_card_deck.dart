@@ -328,6 +328,41 @@ Future<void> shareOrSaveCardImage(
   await Share.shareXFiles([XFile(file.path)], text: text);
 }
 
+/// Share (mobile) or save-to-Downloads (desktop) an arbitrary file — e.g. the
+/// self-contained HTML flipbook. Mirrors [shareOrSaveCardImage] but for a
+/// caller-supplied byte payload and file name.
+Future<void> shareOrSaveBytes(
+  BuildContext context, {
+  required List<int> bytes,
+  required String fileName,
+  String? shareText,
+}) async {
+  if (isDesktop) {
+    final dir =
+        await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsBytes(bytes);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text('Saved to ${file.path}'),
+          action: SnackBarAction(
+            label: 'Open folder',
+            onPressed: () => launchUrl(Uri.file(dir.path)),
+          ),
+        ),
+      );
+    }
+    return;
+  }
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$fileName');
+  await file.writeAsBytes(bytes);
+  await Share.shareXFiles([XFile(file.path)], text: shareText);
+}
+
 /// The Brand / Light / Dark selector, shared by every card screen.
 class CardStyleSelector extends StatelessWidget {
   const CardStyleSelector({
