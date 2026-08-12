@@ -1,20 +1,13 @@
-import 'dart:io';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/platform.dart';
 import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
-import '../areas/area_icons.dart' as ai;
 import '../common/task_status_icon.dart';
+import 'share_card_deck.dart';
 import 'share_channels.dart';
 
 /// §13 share a task or event as a **card** for committed listeners and
@@ -60,8 +53,6 @@ class InviteCardScreen extends ConsumerStatefulWidget {
 /// Before ([invitation]) vs after ([report]) the commitment.
 enum ShareMode { invitation, report }
 
-enum _CardStyle { light, dark, brand }
-
 /// One shareable field. Each is offered only when the task actually carries it,
 /// and each mode has its own relevant subset + defaults.
 enum _Field {
@@ -74,6 +65,7 @@ enum _Field {
   area,
   status,
   outcome,
+  agenda,
   review,
   captures,
 }
@@ -88,6 +80,7 @@ String _fieldLabel(_Field f) => switch (f) {
   _Field.area => 'Area',
   _Field.status => 'Status',
   _Field.outcome => 'Outcome',
+  _Field.agenda => 'Agenda',
   _Field.review => 'Review notes',
   _Field.captures => 'Captures',
 };
@@ -109,6 +102,7 @@ const _reportFields = [
   _Field.duration,
   _Field.location,
   _Field.area,
+  _Field.agenda,
   _Field.notes,
   _Field.review,
   _Field.captures,
@@ -118,10 +112,11 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
   final _cardKey = GlobalKey();
   final PageController _pager = PageController();
   int _page = 0;
-  _CardStyle _style = _CardStyle.brand;
+  CardStyle _style = CardStyle.brand;
   late ShareMode _mode = widget.initialMode;
   late Set<_Field> _fields = _defaultsFor(_mode);
   List<Capture> _captures = const [];
+  List<Task> _agenda = const [];
   bool _busy = false;
 
   /// Optional one-line AI flourish. Off by default — the card is complete
@@ -166,6 +161,8 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
         return (t.reviewNotes ?? '').trim().isNotEmpty;
       case _Field.captures:
         return _captures.isNotEmpty;
+      case _Field.agenda:
+        return _agenda.isNotEmpty;
     }
   }
 
@@ -186,6 +183,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
             _Field.notes,
             _Field.review,
             _Field.captures,
+            _Field.agenda,
           };
     return all.difference(off);
   }
@@ -199,50 +197,14 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
   Future<void> _share() async {
     setState(() => _busy = true);
     try {
-      final boundary =
-          _cardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      // 3× a 360pt-wide card → 1080 wide, the size social platforms want.
-      final image = await boundary.toImage(pixelRatio: 3);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (data == null) throw 'Could not render the card.';
-      final bytes = data.buffer.asUint8List();
-
-      final safe = widget.task.title
-          .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), '')
-          .trim()
-          .replaceAll(' ', '-');
-      final name = 'saara-${_mode == ShareMode.report ? 'report' : 'invite'}'
-          '${safe.isEmpty ? '' : '-$safe'}.png';
-
-      // Desktop has no share sheet that lists WhatsApp/mail — save the image to
-      // Downloads and point the user at it, mirroring the Day Card.
-      if (isDesktop) {
-        final dir =
-            await getDownloadsDirectory() ??
-            await getApplicationDocumentsDirectory();
-        final file = File('${dir.path}/$name');
-        await file.writeAsBytes(bytes);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              duration: const Duration(seconds: 8),
-              content: Text('Card saved to ${file.path}'),
-              action: SnackBarAction(
-                label: 'Open folder',
-                onPressed: () => launchUrl(Uri.file(dir.path)),
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/$name');
-      await file.writeAsBytes(bytes);
-      // Send the card *and* the details as message text, so any join/details
-      // link stays tappable — it can't be on the image itself.
-      await Share.shareXFiles([XFile(file.path)], text: _messageText());
+      final slug = cardFileSlug(widget.task.title);
+      await shareOrSaveCardImage(
+        context,
+        captureKey: _cardKey,
+        text: _messageText(),
+        fileBase: 'saara-${_mode == ShareMode.report ? 'report' : 'invite'}'
+            '${slug.isEmpty ? '' : '-$slug'}',
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -388,6 +350,18 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     if (_on(_Field.location) && (t.locationName ?? '').trim().isNotEmpty) {
       b.writeln('Where: ${t.locationName!.trim()}');
     }
+    if (_on(_Field.agenda) && _agenda.isNotEmpty) {
+      final done = _agenda
+          .where((a) => a.status == TaskStatus.completed)
+          .length;
+      b
+        ..writeln()
+        ..writeln('Agenda ($done of ${_agenda.length} done):');
+      for (final a in _agenda) {
+        final mark = a.status == TaskStatus.completed ? '✓' : '•';
+        b.writeln('  $mark ${a.title}');
+      }
+    }
     if (_on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) {
       b
         ..writeln()
@@ -459,8 +433,8 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
 
   // --- page construction ---------------------------------------------------
 
-  _Palette get _palette =>
-      _Palette.of(_style, widget.areaColor, widget.areaIconName);
+  CardPalette get _palette =>
+      CardPalette.of(_style, widget.areaColor, widget.areaIconName);
   String? get _areaLabel => _on(_Field.area) ? widget.areaName : null;
 
   Widget _invitationCard() {
@@ -468,11 +442,11 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     final (icon, label) = _isEvent
         ? (Icons.event, "YOU'RE INVITED")
         : (Icons.check_circle_outline, "I'VE COMMITTED TO");
-    return _CardFrame(
+    return CardFrame(
       palette: p,
       eyebrowIcon: icon,
       eyebrow: label,
-      areaName: _areaLabel,
+      badgeName: _areaLabel,
       body: _invitationBody(widget.task, p, _fields, _tagline),
     );
   }
@@ -484,14 +458,46 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     final t = widget.task;
     final (icon, label) = _reportEyebrow(t.status);
     final pages = <Widget>[
-      _CardFrame(
+      CardFrame(
         palette: p,
         eyebrowIcon: icon,
         eyebrow: label,
-        areaName: _areaLabel,
+        badgeName: _areaLabel,
         body: _reportSummaryBody(t, p, _fields, _tagline),
       ),
     ];
+    if (_on(_Field.agenda) && _agenda.isNotEmpty) {
+      final done = _agenda
+          .where((a) => a.status == TaskStatus.completed)
+          .length;
+      pages.add(
+        _detailPage(
+          p,
+          Icons.checklist_rtl_outlined,
+          'AGENDA',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$done of ${_agenda.length} done',
+                style: TextStyle(color: p.muted, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              for (final a in _agenda.take(8)) _agendaRow(a, p),
+              if (_agenda.length > 8)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '+${_agenda.length - 8} more',
+                    style: TextStyle(color: p.muted, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) {
       pages.add(
         _detailPage(
@@ -556,12 +562,12 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
 
   /// A detail page: the section named in the eyebrow, a small title reference,
   /// then the content.
-  Widget _detailPage(_Palette p, IconData icon, String label, Widget content) {
-    return _CardFrame(
+  Widget _detailPage(CardPalette p, IconData icon, String label, Widget content) {
+    return CardFrame(
       palette: p,
       eyebrowIcon: icon,
       eyebrow: label,
-      areaName: _areaLabel,
+      badgeName: _areaLabel,
       body: [
         Text(
           widget.task.title,
@@ -580,7 +586,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     );
   }
 
-  Widget _captureRow(Capture c, _Palette p) {
+  Widget _captureRow(Capture c, CardPalette p) {
     final showDur = c.durationSec != null && c.durationSec! > 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -606,12 +612,42 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     );
   }
 
+  Widget _agendaRow(Task a, CardPalette p) {
+    final v = taskStatusVisual(
+      a.status,
+      a.dueDate,
+      Theme.of(context).colorScheme,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(v.icon, size: 15, color: v.color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              a.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.ink, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Captures back the report's Captures page — loaded on demand, no await.
     _captures =
         ref.watch(capturesForTaskProvider(widget.task.id)).valueOrNull ??
         const [];
+    // An event's agenda — its child action items — backs the Agenda page.
+    _agenda = _isEvent
+        ? (ref.watch(childTasksForEventProvider(widget.task.id)).valueOrNull ??
+              const [])
+        : const [];
     // If the loaded captures made that field selectable and it was defaulted
     // out, nothing to do — it simply appears as an off chip to turn on.
 
@@ -625,7 +661,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     final Widget preview;
     Widget? offscreen;
     if (multi) {
-      preview = _PagedViewer(
+      preview = PagedViewer(
         controller: _pager,
         pages: pages,
         page: _page,
@@ -639,7 +675,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
           offset: const Offset(-5000, 0),
           child: RepaintBoundary(
             key: _cardKey,
-            child: _ReportComposite(pages: _reportPages(), style: _style),
+            child: ReportComposite(pages: _reportPages(), style: _style),
           ),
         ),
       );
@@ -721,17 +757,17 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
                 ),
               const SizedBox(height: 20),
               Center(
-                child: SegmentedButton<_CardStyle>(
+                child: SegmentedButton<CardStyle>(
                   segments: const [
                     ButtonSegment(
-                      value: _CardStyle.brand,
+                      value: CardStyle.brand,
                       label: Text('Brand'),
                     ),
                     ButtonSegment(
-                      value: _CardStyle.light,
+                      value: CardStyle.light,
                       label: Text('Light'),
                     ),
-                    ButtonSegment(value: _CardStyle.dark, label: Text('Dark')),
+                    ButtonSegment(value: CardStyle.dark, label: Text('Dark')),
                   ],
                   selected: {_style},
                   onSelectionChanged: (s) => setState(() => _style = s.first),
@@ -898,158 +934,8 @@ String _joinLabelForCard(String link) {
 
 // --- card faces -----------------------------------------------------------
 
-/// The resolved colours for a card, derived once from the style + area colour.
-class _Palette {
-  const _Palette({
-    required this.bg,
-    required this.ink,
-    required this.muted,
-    required this.accent,
-    required this.icon,
-  });
-
-  final Color bg, ink, muted, accent;
-  final IconData icon;
-
-  static const _brand = Color(0xFFCC1A1A);
-
-  factory _Palette.of(_CardStyle style, String? areaColor, String? areaIcon) {
-    // The area's own colour leads; Saara's red is only the fallback.
-    final tint = ai.areaColor(areaColor) ?? _brand;
-    final (bg, ink, muted, accent) = switch (style) {
-      _CardStyle.brand => (tint, Colors.white, Colors.white70, Colors.white),
-      _CardStyle.light => (
-        const Color(0xFFFAF8F6),
-        const Color(0xFF1B1613),
-        const Color(0xFF6D635C),
-        tint,
-      ),
-      _CardStyle.dark => (
-        const Color(0xFF141110),
-        const Color(0xFFF2ECE7),
-        const Color(0xFFA99F97),
-        Color.lerp(tint, Colors.white, 0.45) ?? tint,
-      ),
-    };
-    return _Palette(
-      bg: bg,
-      ink: ink,
-      muted: muted,
-      accent: accent,
-      icon: ai.areaIcon(areaIcon),
-    );
-  }
-}
-
-/// A 360×360 card shell: watermark, eyebrow at the top, the given [body] in the
-/// middle, and the area badge at the foot. Every page — invitation, report
-/// summary, report detail — is one of these.
-class _CardFrame extends StatelessWidget {
-  const _CardFrame({
-    required this.palette,
-    required this.eyebrowIcon,
-    required this.eyebrow,
-    required this.body,
-    this.areaName,
-  });
-
-  final _Palette palette;
-  final IconData eyebrowIcon;
-  final String eyebrow;
-  final List<Widget> body;
-  final String? areaName;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = palette;
-    return Container(
-      width: 360,
-      height: 360,
-      decoration: BoxDecoration(
-        color: p.bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Stack(
-        children: [
-          // Oversized area glyph as a watermark — the "banner" for this area.
-          Positioned(
-            right: -28,
-            bottom: -24,
-            child: Icon(
-              p.icon,
-              size: 190,
-              color: p.accent.withValues(alpha: 0.10),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(eyebrowIcon, size: 16, color: p.accent),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        eyebrow,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: p.accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.6,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                ...body,
-                const Spacer(),
-                if ((areaName ?? '').isNotEmpty) ...[
-                  Divider(color: p.muted.withValues(alpha: 0.3), height: 1),
-                  const SizedBox(height: 12),
-                  // The area is the badge — its own icon and name, not an advert.
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: p.accent.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(p.icon, size: 16, color: p.accent),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          areaName!.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: p.accent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// The title — the common opening of a face.
-Widget _title(Task t, _Palette p) => Text(
+Widget _title(Task t, CardPalette p) => Text(
   t.title,
   maxLines: 4,
   overflow: TextOverflow.ellipsis,
@@ -1062,7 +948,7 @@ Widget _title(Task t, _Palette p) => Text(
   ),
 );
 
-List<Widget> _whenBlock(Task t, _Palette p, bool showDuration) {
+List<Widget> _whenBlock(Task t, CardPalette p, bool showDuration) {
   final when = t.scheduledStart ?? t.dueDate;
   if (when == null) return const [];
   return [
@@ -1080,7 +966,7 @@ List<Widget> _whenBlock(Task t, _Palette p, bool showDuration) {
 
 List<Widget> _invitationBody(
   Task t,
-  _Palette p,
+  CardPalette p,
   Set<_Field> f,
   String? tagline,
 ) {
@@ -1139,7 +1025,7 @@ List<Widget> _invitationBody(
 
 List<Widget> _reportSummaryBody(
   Task t,
-  _Palette p,
+  CardPalette p,
   Set<_Field> f,
   String? tagline,
 ) {
@@ -1170,7 +1056,7 @@ List<Widget> _reportSummaryBody(
   ];
 }
 
-Widget _iconLine(IconData icon, String text, _Palette p) => Padding(
+Widget _iconLine(IconData icon, String text, CardPalette p) => Padding(
   padding: const EdgeInsets.only(top: 8),
   child: Row(
     children: [
@@ -1188,7 +1074,7 @@ Widget _iconLine(IconData icon, String text, _Palette p) => Padding(
   ),
 );
 
-Widget _taglineLine(String tagline, _Palette p) => Padding(
+Widget _taglineLine(String tagline, CardPalette p) => Padding(
   padding: const EdgeInsets.only(top: 12),
   child: Text(
     tagline.trim(),
@@ -1202,104 +1088,6 @@ Widget _taglineLine(String tagline, _Palette p) => Padding(
     ),
   ),
 );
-
-/// The in-app viewer: swipe (or tap) through the report's pages, with a dot
-/// indicator. Preview only — the shared image is the stacked [_ReportComposite].
-class _PagedViewer extends StatelessWidget {
-  const _PagedViewer({
-    required this.controller,
-    required this.pages,
-    required this.page,
-    required this.onPageChanged,
-    required this.dotColor,
-  });
-
-  final PageController controller;
-  final List<Widget> pages;
-  final int page;
-  final ValueChanged<int> onPageChanged;
-  final Color dotColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 360,
-          height: 360,
-          child: GestureDetector(
-            // Tap to advance (wrapping), as well as swipe — a flip-card feel.
-            onTap: () {
-              final next = (page + 1) % pages.length;
-              controller.animateToPage(
-                next,
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeInOut,
-              );
-            },
-            child: PageView(
-              controller: controller,
-              onPageChanged: onPageChanged,
-              children: [for (final pg in pages) Center(child: pg)],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (int i = 0; i < pages.length; i++)
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: i == page ? 9 : 7,
-                height: i == page ? 9 : 7,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i == page
-                      ? dotColor
-                      : dotColor.withValues(alpha: 0.3),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '${page + 1} / ${pages.length}',
-          style: Theme.of(context).textTheme.labelSmall,
-        ),
-      ],
-    );
-  }
-}
-
-/// Every page stacked — the single shareable image for a multi-page report.
-class _ReportComposite extends StatelessWidget {
-  const _ReportComposite({required this.pages, required this.style});
-  final List<Widget> pages;
-  final _CardStyle style;
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = style == _CardStyle.light
-        ? const Color(0xFFEDE9E5)
-        : const Color(0xFF0E0E12);
-    return Container(
-      color: bg,
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (int i = 0; i < pages.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
-            pages[i],
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 /// The status word as a small pill on the report card, coloured by disposition.
 class _StatusPill extends StatelessWidget {

@@ -11,6 +11,7 @@ import '../../domain/listener_report.dart';
 import '../../domain/reliability.dart';
 import '../../providers.dart';
 import 'add_listener_screen.dart';
+import 'listener_report_card_screen.dart';
 
 /// §7.7 / §13 Committed listeners — add people, preview a ledger-generated
 /// report, and send it through the user's own apps (share sheet). Gmail-send
@@ -88,6 +89,17 @@ class _ListenerCard extends ConsumerWidget {
                   onPressed: () => _recordFeedback(context, ref),
                 ),
                 const Spacer(),
+                TextButton.icon(
+                  icon: const Icon(Icons.ios_share, size: 18),
+                  label: const Text('Card'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          ListenerReportCardScreen(listener: listener),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.send, size: 18),
                   label: const Text('Preview & send'),

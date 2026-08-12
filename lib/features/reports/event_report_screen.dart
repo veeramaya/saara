@@ -12,6 +12,7 @@ import '../../data/database.dart';
 import '../../domain/enums.dart';
 import '../../domain/reliability.dart';
 import '../../providers.dart';
+import '../share/invite_card_screen.dart';
 import '../share/share_channels.dart';
 
 /// §13 post-session report for an event that has an agenda: how each item was
@@ -61,8 +62,32 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
         title: const Text('Event report'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.style_outlined),
+            tooltip: 'Share as card',
+            onPressed: () {
+              final e = eventAsync.valueOrNull;
+              if (e == null) return;
+              final areas =
+                  ref.read(activeAreasProvider).valueOrNull ?? const [];
+              final area = e.areaId == null
+                  ? null
+                  : areas.where((a) => a.id == e.areaId).firstOrNull;
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => InviteCardScreen(
+                    task: e,
+                    areaName: area?.displayName,
+                    areaIconName: area?.icon,
+                    areaColor: area?.color,
+                    initialMode: ShareMode.report,
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.ios_share),
-            tooltip: 'Share report',
+            tooltip: 'Share report text',
             onPressed: () {
               final e = eventAsync.valueOrNull;
               final i = itemsAsync.valueOrNull;
