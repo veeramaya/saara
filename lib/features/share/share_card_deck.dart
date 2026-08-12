@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -326,6 +327,19 @@ Future<void> shareOrSaveCardImage(
   // Send the card *and* the details as message text, so any link stays
   // tappable — it can't be on the image itself.
   await Share.shareXFiles([XFile(file.path)], text: text);
+}
+
+/// Capture whatever [key] wraps to PNG bytes at [pixelRatio], or null if it
+/// isn't mounted / can't render. Used to turn individual card pages into the
+/// images embedded in an HTML flipbook.
+Future<Uint8List?> capturePng(GlobalKey key, {double pixelRatio = 3}) async {
+  final ctx = key.currentContext;
+  if (ctx == null) return null;
+  final boundary = ctx.findRenderObject();
+  if (boundary is! RenderRepaintBoundary) return null;
+  final image = await boundary.toImage(pixelRatio: pixelRatio);
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  return data?.buffer.asUint8List();
 }
 
 /// Share (mobile) or save-to-Downloads (desktop) an arbitrary file — e.g. the

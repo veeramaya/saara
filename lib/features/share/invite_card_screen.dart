@@ -1,9 +1,13 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/platform.dart';
 import '../../data/database.dart';
+import 'flipbook_html.dart';
 import '../../domain/enums.dart';
 import '../../providers.dart';
 import '../common/task_status_icon.dart';
@@ -117,6 +121,9 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
   late Set<_Field> _fields = _defaultsFor(_mode);
   List<Capture> _captures = const [];
   List<Task> _agenda = const [];
+  // One capture key per page, for the HTML flipbook export (each page becomes
+  // one embedded image). Rebuilt when the page count changes.
+  List<GlobalKey> _pageKeys = const [];
   bool _busy = false;
 
   /// Optional one-line AI flourish. Off by default — the card is complete
@@ -210,6 +217,45 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Could not share: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Export the report/invitation as a **self-contained HTML flipbook** — a
+  /// browser-friendly page a listener can open with no app. Each card page is
+  /// captured to an image and embedded; on a single-page share it's just a web
+  /// card, on a multi-page report it flips.
+  Future<void> _shareHtml() async {
+    setState(() => _busy = true);
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      final imgs = <Uint8List>[];
+      for (final k in _pageKeys) {
+        final png = await capturePng(k, pixelRatio: 2.5);
+        if (png != null) imgs.add(png);
+      }
+      if (imgs.isEmpty) throw 'Nothing to export yet.';
+      final title = _mode == ShareMode.report
+          ? '${widget.task.title} — report'
+          : widget.task.title;
+      final html = buildFlipbookHtml(title: title, pages: imgs);
+      final slug = cardFileSlug(widget.task.title);
+      if (!mounted) return;
+      await shareOrSaveBytes(
+        context,
+        bytes: utf8.encode(html),
+        fileName:
+            'saara-${_mode == ShareMode.report ? 'report' : 'invite'}'
+            '${slug.isEmpty ? '' : '-$slug'}.html',
+        shareText: title,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not export: $e')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -686,6 +732,27 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
       );
     }
 
+    // Per-page off-screen targets for the HTML flipbook export (fresh
+    // instances — a widget can't sit in the preview and here at once).
+    final htmlPages = isReport ? _reportPages() : [_invitationCard()];
+    if (_pageKeys.length != htmlPages.length) {
+      _pageKeys = [for (var i = 0; i < htmlPages.length; i++) GlobalKey()];
+    }
+    final htmlCapture = Positioned(
+      left: 0,
+      top: 0,
+      child: Transform.translate(
+        offset: const Offset(-5000, -12000),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < htmlPages.length; i++)
+              RepaintBoundary(key: _pageKeys[i], child: htmlPages[i]),
+          ],
+        ),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(title: const Text('Share')),
       body: Stack(
@@ -829,6 +896,19 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
+                icon: const Icon(Icons.public),
+                label: Text(
+                  isDesktop
+                      ? 'Save as web page (HTML)'
+                      : 'Share as web page (HTML)',
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: _busy ? null : _shareHtml,
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
                 icon: const Icon(Icons.notes),
                 label: const Text('Share as text only'),
                 style: OutlinedButton.styleFrom(
@@ -851,6 +931,8 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
           // Off-screen capture target for a multi-page report: every page
           // stacked into one image (the live viewer can't be captured mid-turn).
           ?offscreen,
+          // Per-page off-screen targets for the HTML flipbook export.
+          htmlCapture,
         ],
       ),
     );

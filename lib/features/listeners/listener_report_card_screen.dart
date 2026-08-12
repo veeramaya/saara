@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform.dart';
+import '../share/flipbook_html.dart';
 import '../../data/database.dart';
 import '../../domain/listener_report.dart';
 import '../../domain/enums.dart';
@@ -30,6 +34,8 @@ class _ListenerReportCardScreenState
   int _page = 0;
   CardStyle _style = CardStyle.brand;
   bool _busy = false;
+  // One capture key per page, for the HTML flipbook export.
+  List<GlobalKey> _pageKeys = const [];
 
   // Everything on by default; the sharer turns sections off.
   final Set<ListenerReportField> _fields = {
@@ -91,6 +97,12 @@ class _ListenerReportCardScreenState
     final pages = pagesFor(_style);
     if (_page >= pages.length) _page = 0;
     final multi = pages.length > 1;
+
+    // Fresh instances + keys for the per-page HTML flipbook export.
+    final htmlPages = pagesFor(_style);
+    if (_pageKeys.length != htmlPages.length) {
+      _pageKeys = [for (var i = 0; i < htmlPages.length; i++) GlobalKey()];
+    }
 
     final preview = multi
         ? PagedViewer(
@@ -165,6 +177,19 @@ class _ListenerReportCardScreenState
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
+              icon: const Icon(Icons.public),
+              label: Text(
+                isDesktop
+                    ? 'Save as web page (HTML)'
+                    : 'Share as web page (HTML)',
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: _busy ? null : _shareHtml,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
               icon: const Icon(Icons.notes),
               label: const Text('Share as text only'),
               style: OutlinedButton.styleFrom(
@@ -194,8 +219,55 @@ class _ListenerReportCardScreenState
               ),
             ),
           ),
+        // Per-page off-screen targets for the HTML flipbook export.
+        Positioned(
+          left: 0,
+          top: 0,
+          child: Transform.translate(
+            offset: const Offset(-5000, -12000),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < htmlPages.length; i++)
+                  RepaintBoundary(key: _pageKeys[i], child: htmlPages[i]),
+              ],
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _shareHtml() async {
+    setState(() => _busy = true);
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      final imgs = <Uint8List>[];
+      for (final k in _pageKeys) {
+        final png = await capturePng(k, pixelRatio: 2.5);
+        if (png != null) imgs.add(png);
+      }
+      if (imgs.isEmpty) throw 'Nothing to export yet.';
+      final html = buildFlipbookHtml(
+        title: 'My week — ${widget.listener.displayName}',
+        pages: imgs,
+      );
+      if (!mounted) return;
+      await shareOrSaveBytes(
+        context,
+        bytes: utf8.encode(html),
+        fileName: 'saara-week.html',
+        shareText: 'My week',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not export: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   String _text(
