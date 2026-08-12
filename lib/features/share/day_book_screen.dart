@@ -8,8 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/platform.dart';
+import '../../data/database.dart';
+import '../../domain/enums.dart';
 import '../../providers.dart';
 import 'flipbook_html.dart';
+import 'report_card.dart';
 import 'ritual_card_screen.dart';
 import 'share_card_deck.dart';
 
@@ -32,7 +35,9 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
   bool _busy = false;
 
   List<DayCardData> _cards = const [];
-  // One capture key per face (two faces per day, in card order).
+  // Completed tasks/events in range → one report card each, after the days.
+  List<({Task task, Area? area})> _reports = const [];
+  // One capture key per page (two faces per day, then one per report).
   List<GlobalKey> _keys = const [];
 
   @override
@@ -52,31 +57,46 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
     final dao = ref.read(taskDaoProvider);
     final db = ref.read(appDatabaseProvider);
     final areas = await ref.read(activeAreasProvider.future);
+    final areaById = {for (final a in areas) a.id: a};
     final today = DateTime.now();
     final base = DateTime(today.year, today.month, today.day);
 
     final cards = <DayCardData>[];
+    final reports = <({Task task, Area? area})>[];
+    final reportSeen = <String>{};
     for (var d = 0; d < _days; d++) {
       final day = base.subtract(Duration(days: d));
       final tasks = await dao.tasksForDay(day);
       final log = await db.dayLogFor(DateFormat('yyyy-MM-dd').format(day));
       // A day earns a page if it has tasks or a day record — skip blank days.
-      if (tasks.isEmpty && log == null) continue;
-      cards.add(
-        DayCardData.compute(
-          day: day,
-          tasks: tasks,
-          areas: areas,
-          closed: log?.closedAt != null,
-          declaration: log?.declaration,
-          restoration: log?.reflection,
-        ),
-      );
+      if (tasks.isNotEmpty || log != null) {
+        cards.add(
+          DayCardData.compute(
+            day: day,
+            tasks: tasks,
+            areas: areas,
+            closed: log?.closedAt != null,
+            declaration: log?.declaration,
+            restoration: log?.reflection,
+          ),
+        );
+      }
+      // Every completed task/event in range earns its own report card.
+      for (final t in tasks) {
+        if (t.status == TaskStatus.completed && reportSeen.add(t.id)) {
+          reports.add((
+            task: t,
+            area: t.areaId == null ? null : areaById[t.areaId],
+          ));
+        }
+      }
     }
     if (!mounted) return;
     setState(() {
       _cards = cards;
-      _keys = [for (var i = 0; i < cards.length * 2; i++) GlobalKey()];
+      _reports = reports;
+      final total = cards.length * 2 + reports.length;
+      _keys = [for (var i = 0; i < total; i++) GlobalKey()];
       _page = 0;
       _loading = false;
     });
@@ -88,32 +108,54 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
     await _load();
   }
 
-  List<Widget> _faces() => [
-    for (final c in _cards) ...[
-      DayFace(data: c, open: true),
-      DayFace(data: c, open: false),
-    ],
-  ];
+  /// The book's pages, in order: each day's two faces, then a report card per
+  /// completed item. Fresh widget instances each call (a widget can't sit in
+  /// two places in the tree — preview and off-screen capture need their own).
+  List<({Widget page, String caption})> _pages() {
+    final out = <({Widget page, String caption})>[];
+    for (final c in _cards) {
+      final label = DateFormat('EEE, d MMM').format(c.day);
+      out.add((page: DayFace(data: c, open: true), caption: '$label — open'));
+      out.add((page: DayFace(data: c, open: false), caption: '$label — close'));
+    }
+    for (final r in _reports) {
+      final p = CardPalette.of(CardStyle.brand, r.area?.color, r.area?.icon);
+      out.add((
+        page: _box(
+          reportSummaryCard(
+            task: r.task,
+            palette: p,
+            areaName: r.area?.displayName,
+          ),
+        ),
+        caption: 'Report — ${r.task.title}',
+      ));
+    }
+    return out;
+  }
+
+  /// Pad a 360×360 report card to the day-face footprint so the book's pages
+  /// are all one size.
+  Widget _box(Widget card) =>
+      SizedBox(width: 380, height: 466, child: Center(child: card));
 
   Future<void> _export() async {
     setState(() => _busy = true);
     try {
-      // Let the off-screen faces settle a frame before capturing.
+      // Let the off-screen pages settle a frame before capturing.
       await Future<void>.delayed(const Duration(milliseconds: 120));
+      final meta = _pages();
       final pages = <Uint8List>[];
       final captions = <String>[];
-      for (var c = 0; c < _cards.length; c++) {
-        final label = DateFormat('EEE, d MMM').format(_cards[c].day);
-        for (var f = 0; f < 2; f++) {
-          final key = _keys[c * 2 + f];
-          final boundary =
-              key.currentContext!.findRenderObject() as RenderRepaintBoundary;
-          final image = await boundary.toImage(pixelRatio: 2);
-          final data = await image.toByteData(format: ui.ImageByteFormat.png);
-          if (data == null) continue;
-          pages.add(data.buffer.asUint8List());
-          captions.add('$label — ${f == 0 ? 'open' : 'close'}');
-        }
+      for (var i = 0; i < meta.length && i < _keys.length; i++) {
+        final boundary =
+            _keys[i].currentContext!.findRenderObject()
+                as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 2);
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (data == null) continue;
+        pages.add(data.buffer.asUint8List());
+        captions.add(meta[i].caption);
       }
       if (pages.isEmpty) throw 'Nothing to export yet.';
       final html = buildFlipbookHtml(
@@ -178,9 +220,9 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
   Widget _content() {
     // Separate instances for the preview vs the off-screen capture — the same
     // widget object can't sit in two places in the tree.
-    final faces = _faces();
-    final captureFaces = _faces();
-    if (_page >= faces.length) _page = 0;
+    final pages = _pages();
+    final capturePages = _pages();
+    if (_page >= pages.length) _page = 0;
     return Stack(
       children: [
         ListView(
@@ -199,14 +241,15 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
                 dotColor: Theme.of(context).colorScheme.primary,
                 pageWidth: 380,
                 pageHeight: 466,
-                pages: faces,
+                pages: [for (final e in pages) e.page],
               ),
             ),
             const SizedBox(height: 8),
             Center(
               child: Text(
                 '${_cards.length} day${_cards.length == 1 ? '' : 's'} · '
-                '${faces.length} pages — swipe to browse.',
+                '${_reports.length} report${_reports.length == 1 ? '' : 's'} · '
+                '${pages.length} pages — swipe to browse.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -238,7 +281,7 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
             ),
           ],
         ),
-        // Off-screen capture targets: every face, each under its own key.
+        // Off-screen capture targets: every page, each under its own key.
         Positioned(
           left: 0,
           top: 0,
@@ -247,8 +290,8 @@ class _DayBookScreenState extends ConsumerState<DayBookScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (var i = 0; i < captureFaces.length; i++)
-                  RepaintBoundary(key: _keys[i], child: captureFaces[i]),
+                for (var i = 0; i < capturePages.length && i < _keys.length; i++)
+                  RepaintBoundary(key: _keys[i], child: capturePages[i].page),
               ],
             ),
           ),
