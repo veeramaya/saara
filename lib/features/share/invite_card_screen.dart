@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -18,18 +17,19 @@ import '../areas/area_icons.dart' as ai;
 import '../common/task_status_icon.dart';
 import 'share_channels.dart';
 
-/// §13 share a task or event as a **card image** for committed listeners and
+/// §13 share a task or event as a **card** for committed listeners and
 /// participants — over WhatsApp, mail or any messaging app.
 ///
 /// Two directions, chosen at the top:
 ///  • **Invitation** — before the fact: "you're invited" / "I've committed to".
-///  • **Report** — after the fact: how it went, kept or fell short.
+///  • **Report** — after the fact: how it went, kept or fell short. A full
+///    report can run to several pages — a summary, then a page each for notes,
+///    review and captures — flipped through in a built-in viewer and shared as
+///    one image with every page stacked.
 ///
 /// Either way the sharer decides *which fields travel*. Only ticked fields land
-/// on the card and in the message; notes, restoration and scores stay off
-/// unless deliberately turned on. A report with details spills onto a second
-/// face — a flip card in-app, both faces stacked into one image when shared, so
-/// nothing ever clips. Everything is a real widget captured through a
+/// on the card and in the message; notes, review and scores stay off unless
+/// deliberately turned on. Every page is a real widget captured through a
 /// [RepaintBoundary] at 3× — no image library, no server, nothing leaves the
 /// device until a share target is picked.
 class InviteCardScreen extends ConsumerStatefulWidget {
@@ -74,7 +74,8 @@ enum _Field {
   area,
   status,
   outcome,
-  restoration,
+  review,
+  captures,
 }
 
 String _fieldLabel(_Field f) => switch (f) {
@@ -87,7 +88,8 @@ String _fieldLabel(_Field f) => switch (f) {
   _Field.area => 'Area',
   _Field.status => 'Status',
   _Field.outcome => 'Outcome',
-  _Field.restoration => 'Restoration',
+  _Field.review => 'Review notes',
+  _Field.captures => 'Captures',
 };
 
 // Which fields each mode offers, in display order.
@@ -108,18 +110,18 @@ const _reportFields = [
   _Field.location,
   _Field.area,
   _Field.notes,
-  _Field.restoration,
+  _Field.review,
+  _Field.captures,
 ];
-
-// The fields that live on the *back* face of a report — the longer, less
-// glanceable ones. When none of these are on, the report is a single face.
-const _reportBackFields = [_Field.location, _Field.notes, _Field.restoration];
 
 class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
   final _cardKey = GlobalKey();
+  final PageController _pager = PageController();
+  int _page = 0;
   _CardStyle _style = _CardStyle.brand;
   late ShareMode _mode = widget.initialMode;
   late Set<_Field> _fields = _defaultsFor(_mode);
+  List<Capture> _captures = const [];
   bool _busy = false;
 
   /// Optional one-line AI flourish. Off by default — the card is complete
@@ -130,14 +132,14 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
   bool get _isEvent => widget.task.kind == TaskKind.event;
   bool _on(_Field f) => _fields.contains(f);
 
-  /// True when a report has enough detail to warrant a second face.
-  bool get _hasBack =>
-      _mode == ShareMode.report &&
-      (_reportBackFields.any((f) => _on(f) && _has(f)) ||
-          (_tagline ?? '').trim().isNotEmpty);
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
+  }
 
   /// Does the task carry any data for [f]? A field with nothing behind it is
-  /// never offered — no empty "Location:" lines, no dead toggles.
+  /// never offered — no empty sections, no dead toggles.
   bool _has(_Field f) {
     final t = widget.task;
     switch (f) {
@@ -158,9 +160,12 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
       case _Field.status:
         return true; // a task always has a status to report
       case _Field.outcome:
-        return t.completedAt != null || t.timeToCompleteMin != null;
-      case _Field.restoration:
+        return t.completedAt != null ||
+            (t.timeToCompleteMin != null && t.timeToCompleteMin! > 0);
+      case _Field.review:
         return (t.reviewNotes ?? '').trim().isNotEmpty;
+      case _Field.captures:
+        return _captures.isNotEmpty;
     }
   }
 
@@ -170,18 +175,25 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
           .toList();
 
   /// Sensible defaults per mode: the outward-facing facts on, the private ones
-  /// (notes, restoration) off until the sharer opts in.
+  /// (notes, review, captures) off until the sharer opts in.
   Set<_Field> _defaultsFor(ShareMode m) {
     final all = _offered(m).toSet();
     final off = m == ShareMode.invitation
         ? {_Field.notes}
-        : {_Field.duration, _Field.location, _Field.notes, _Field.restoration};
+        : {
+            _Field.duration,
+            _Field.location,
+            _Field.notes,
+            _Field.review,
+            _Field.captures,
+          };
     return all.difference(off);
   }
 
   void _setMode(ShareMode m) => setState(() {
     _mode = m;
     _fields = _defaultsFor(m); // reset to the new mode's relevant defaults
+    _page = 0;
   });
 
   Future<void> _share() async {
@@ -369,7 +381,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
           'Completed: ${DateFormat('d MMM, h:mm a').format(t.completedAt!)}',
         );
       }
-      if (t.timeToCompleteMin != null) {
+      if (t.timeToCompleteMin != null && t.timeToCompleteMin! > 0) {
         b.writeln('Took: ${_fmtDuration(t.timeToCompleteMin!)}');
       }
     }
@@ -379,12 +391,22 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     if (_on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) {
       b
         ..writeln()
+        ..writeln('Notes:')
         ..writeln(t.notes!.trim());
     }
-    if (_on(_Field.restoration) && (t.reviewNotes ?? '').trim().isNotEmpty) {
+    if (_on(_Field.review) && (t.reviewNotes ?? '').trim().isNotEmpty) {
       b
         ..writeln()
-        ..writeln('Restoring: ${t.reviewNotes!.trim()}');
+        ..writeln('Review:')
+        ..writeln(t.reviewNotes!.trim());
+    }
+    if (_on(_Field.captures) && _captures.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln('Captures (${_captures.length}):');
+      for (final c in _captures) {
+        b.writeln('  • ${_captureLine(c)}');
+      }
     }
     _appendTagline(b);
     return b.toString().trimRight();
@@ -435,48 +457,198 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     );
   }
 
-  /// Build a fresh front/summary face (a new instance each call, so it can be
-  /// used both in the visible preview and the off-screen capture).
-  Widget _buildFront() {
-    final p = _Palette.of(_style, widget.areaColor, widget.areaIconName);
-    final (icon, label) = _mode == ShareMode.report
-        ? _reportEyebrow(widget.task.status)
-        : (
-            _isEvent ? Icons.event : Icons.check_circle_outline,
-            _isEvent ? "YOU'RE INVITED" : "I'VE COMMITTED TO",
-          );
+  // --- page construction ---------------------------------------------------
+
+  _Palette get _palette =>
+      _Palette.of(_style, widget.areaColor, widget.areaIconName);
+  String? get _areaLabel => _on(_Field.area) ? widget.areaName : null;
+
+  Widget _invitationCard() {
+    final p = _palette;
+    final (icon, label) = _isEvent
+        ? (Icons.event, "YOU'RE INVITED")
+        : (Icons.check_circle_outline, "I'VE COMMITTED TO");
     return _CardFrame(
       palette: p,
       eyebrowIcon: icon,
       eyebrow: label,
-      areaName: _on(_Field.area) ? widget.areaName : null,
-      body: _mode == ShareMode.report
-          ? _reportFrontBody(widget.task, p, _fields)
-          : _invitationBody(widget.task, p, _fields, _tagline),
+      areaName: _areaLabel,
+      body: _invitationBody(widget.task, p, _fields, _tagline),
     );
   }
 
-  Widget _buildBack() {
-    final p = _Palette.of(_style, widget.areaColor, widget.areaIconName);
+  /// The report as an ordered list of card pages: a summary, then a page each
+  /// for the longer sections that are turned on and present.
+  List<Widget> _reportPages() {
+    final p = _palette;
+    final t = widget.task;
+    final (icon, label) = _reportEyebrow(t.status);
+    final pages = <Widget>[
+      _CardFrame(
+        palette: p,
+        eyebrowIcon: icon,
+        eyebrow: label,
+        areaName: _areaLabel,
+        body: _reportSummaryBody(t, p, _fields, _tagline),
+      ),
+    ];
+    if (_on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) {
+      pages.add(
+        _detailPage(
+          p,
+          Icons.notes_outlined,
+          'NOTES',
+          Text(
+            t.notes!.trim(),
+            maxLines: 9,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: p.ink, fontSize: 13.5, height: 1.35),
+          ),
+        ),
+      );
+    }
+    if (_on(_Field.review) && (t.reviewNotes ?? '').trim().isNotEmpty) {
+      pages.add(
+        _detailPage(
+          p,
+          Icons.rate_review_outlined,
+          'REVIEW',
+          Text(
+            t.reviewNotes!.trim(),
+            maxLines: 9,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: p.ink,
+              fontSize: 13.5,
+              height: 1.35,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    }
+    if (_on(_Field.captures) && _captures.isNotEmpty) {
+      pages.add(
+        _detailPage(
+          p,
+          Icons.attachment_outlined,
+          'CAPTURES',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final c in _captures.take(8)) _captureRow(c, p),
+              if (_captures.length > 8)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '+${_captures.length - 8} more',
+                    style: TextStyle(color: p.muted, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    return pages;
+  }
+
+  /// A detail page: the section named in the eyebrow, a small title reference,
+  /// then the content.
+  Widget _detailPage(_Palette p, IconData icon, String label, Widget content) {
     return _CardFrame(
       palette: p,
-      eyebrowIcon: Icons.notes_outlined,
-      eyebrow: 'DETAILS',
-      areaName: _on(_Field.area) ? widget.areaName : null,
-      body: _reportBackBody(widget.task, p, _fields, _tagline),
+      eyebrowIcon: icon,
+      eyebrow: label,
+      areaName: _areaLabel,
+      body: [
+        Text(
+          widget.task.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: p.ink,
+            fontSize: 18,
+            height: 1.15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        content,
+      ],
+    );
+  }
+
+  Widget _captureRow(Capture c, _Palette p) {
+    final showDur = c.durationSec != null && c.durationSec! > 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(_captureIcon(c.type), size: 15, color: p.muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _captureLabel(c),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.ink, fontSize: 13),
+            ),
+          ),
+          if (showDur)
+            Text(
+              _fmtSec(c.durationSec!),
+              style: TextStyle(color: p.muted, fontSize: 12),
+            ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final offered = _offered(_mode);
-    final hasBack = _hasBack;
+    // Captures back the report's Captures page — loaded on demand, no await.
+    _captures =
+        ref.watch(capturesForTaskProvider(widget.task.id)).valueOrNull ??
+        const [];
+    // If the loaded captures made that field selectable and it was defaulted
+    // out, nothing to do — it simply appears as an off chip to turn on.
 
-    // The visible preview: a flip card when a report has a back face, otherwise
-    // a single card that doubles as the capture target.
-    final Widget preview = hasBack
-        ? _FlipCard(front: _buildFront(), back: _buildBack())
-        : RepaintBoundary(key: _cardKey, child: _buildFront());
+    final offered = _offered(_mode);
+    final isReport = _mode == ShareMode.report;
+    final pages = isReport ? _reportPages() : null;
+    final multi = pages != null && pages.length > 1;
+    if (_page >= (pages?.length ?? 1)) _page = 0;
+
+    // The visible preview, and the off-screen capture target.
+    final Widget preview;
+    Widget? offscreen;
+    if (multi) {
+      preview = _PagedViewer(
+        controller: _pager,
+        pages: pages,
+        page: _page,
+        onPageChanged: (i) => setState(() => _page = i),
+        dotColor: Theme.of(context).colorScheme.primary,
+      );
+      offscreen = Positioned(
+        left: 0,
+        top: 0,
+        child: Transform.translate(
+          offset: const Offset(-5000, 0),
+          child: RepaintBoundary(
+            key: _cardKey,
+            child: _ReportComposite(pages: _reportPages(), style: _style),
+          ),
+        ),
+      );
+    } else {
+      preview = RepaintBoundary(
+        key: _cardKey,
+        child: isReport ? pages!.first : _invitationCard(),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Share')),
@@ -491,12 +663,12 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
             ),
             children: [
               Center(child: preview),
-              if (hasBack) ...[
+              if (multi) ...[
                 const SizedBox(height: 8),
                 Center(
                   child: Text(
-                    'Tap the card to flip — summary on one side, details on '
-                    'the other. Shared as one image showing both.',
+                    'Swipe through ${pages.length} pages — shared as one '
+                    'image with all of them.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -611,7 +783,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
                   isDesktop
                       ? 'Save card'
                       : _mode == ShareMode.report
-                      ? 'Share report card'
+                      ? 'Share report'
                       : 'Share card',
                 ),
                 style: FilledButton.styleFrom(
@@ -633,31 +805,16 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
                 'The card is sent with the details as message text — so a join '
                 'or details link stays tappable (a link printed into an image '
                 'would not be). Text-only sends just those details.\n\n'
-                'Only the fields you tick are shared. Notes, restoration and '
-                'your scores are never shared unless you turn them on.',
+                'Only the fields you tick are shared. Notes, review and your '
+                'scores are never shared unless you turn them on.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
-          // Off-screen capture target for the two-face report: both faces
-          // stacked into one image (the flip preview can't be captured mid-turn).
-          if (hasBack)
-            Positioned(
-              left: 0,
-              top: 0,
-              child: Transform.translate(
-                offset: const Offset(-5000, 0),
-                child: RepaintBoundary(
-                  key: _cardKey,
-                  child: _ReportComposite(
-                    front: _buildFront(),
-                    back: _buildBack(),
-                    style: _style,
-                  ),
-                ),
-              ),
-            ),
+          // Off-screen capture target for a multi-page report: every page
+          // stacked into one image (the live viewer can't be captured mid-turn).
+          ?offscreen,
         ],
       ),
     );
@@ -675,6 +832,42 @@ String _fmtDuration(int min) {
   if (min < 60) return '${min}m';
   final h = min ~/ 60, m = min % 60;
   return m == 0 ? '${h}h' : '${h}h ${m}m';
+}
+
+String _fmtSec(int s) {
+  final m = s ~/ 60, sec = s % 60;
+  return '$m:${sec.toString().padLeft(2, '0')}';
+}
+
+IconData _captureIcon(CaptureType t) => switch (t) {
+  CaptureType.text => Icons.notes_outlined,
+  CaptureType.audio => Icons.mic_none_outlined,
+  CaptureType.video => Icons.videocam_outlined,
+  CaptureType.image => Icons.image_outlined,
+};
+
+/// A one-line label for a capture on the card — its caption, else a snippet of
+/// its text, else just the kind.
+String _captureLabel(Capture c) {
+  final cap = (c.caption ?? '').trim();
+  if (cap.isNotEmpty) return cap;
+  final txt = (c.textContent ?? '').trim().replaceAll('\n', ' ');
+  if (txt.isNotEmpty) return txt;
+  return switch (c.type) {
+    CaptureType.text => 'Note',
+    CaptureType.audio => 'Voice note',
+    CaptureType.video => 'Video',
+    CaptureType.image => 'Photo',
+  };
+}
+
+/// A capture as one line of the message text — kind, label and duration.
+String _captureLine(Capture c) {
+  final kind = c.type.name;
+  final dur = (c.durationSec != null && c.durationSec! > 0)
+      ? ' · ${_fmtSec(c.durationSec!)}'
+      : '';
+  return '$kind: ${_captureLabel(c)}$dur';
 }
 
 (IconData, String) _reportEyebrow(TaskStatus status) {
@@ -749,8 +942,8 @@ class _Palette {
 }
 
 /// A 360×360 card shell: watermark, eyebrow at the top, the given [body] in the
-/// middle, and the area badge at the foot. Every face — invitation, report
-/// front, report back — is one of these.
+/// middle, and the area badge at the foot. Every page — invitation, report
+/// summary, report detail — is one of these.
 class _CardFrame extends StatelessWidget {
   const _CardFrame({
     required this.palette,
@@ -855,7 +1048,7 @@ class _CardFrame extends StatelessWidget {
   }
 }
 
-/// The title + when + (invitation extras) — the common opening of a face.
+/// The title — the common opening of a face.
 Widget _title(Task t, _Palette p) => Text(
   t.title,
   maxLines: 4,
@@ -944,7 +1137,12 @@ List<Widget> _invitationBody(
   ];
 }
 
-List<Widget> _reportFrontBody(Task t, _Palette p, Set<_Field> f) {
+List<Widget> _reportSummaryBody(
+  Task t,
+  _Palette p,
+  Set<_Field> f,
+  String? tagline,
+) {
   bool on(_Field x) => f.contains(x);
   return [
     _title(t, p),
@@ -960,69 +1158,17 @@ List<Widget> _reportFrontBody(Task t, _Palette p, Set<_Field> f) {
           'Completed ${DateFormat('d MMM, h:mm a').format(t.completedAt!)}',
           style: TextStyle(color: p.muted, fontSize: 13),
         ),
-      if (t.timeToCompleteMin != null)
+      if (t.timeToCompleteMin != null && t.timeToCompleteMin! > 0)
         Text(
           'Took ${_fmtDuration(t.timeToCompleteMin!)}',
           style: TextStyle(color: p.muted, fontSize: 13),
         ),
     ],
-  ];
-}
-
-List<Widget> _reportBackBody(Task t, _Palette p, Set<_Field> f, String? tag) {
-  bool on(_Field x) => f.contains(x);
-  return [
-    // A small title reference so the details face stands on its own.
-    Text(
-      t.title,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: p.ink,
-        fontSize: 18,
-        height: 1.15,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
     if (on(_Field.location) && (t.locationName ?? '').trim().isNotEmpty)
       _iconLine(Icons.place_outlined, t.locationName!, p),
-    if (on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) ...[
-      const SizedBox(height: 12),
-      Text('NOTES', style: _sectionLabel(p)),
-      const SizedBox(height: 4),
-      Text(
-        t.notes!.trim(),
-        maxLines: 7,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: p.ink, fontSize: 13, height: 1.3),
-      ),
-    ],
-    if (on(_Field.restoration) && (t.reviewNotes ?? '').trim().isNotEmpty) ...[
-      const SizedBox(height: 12),
-      Text('RESTORING', style: _sectionLabel(p)),
-      const SizedBox(height: 4),
-      Text(
-        t.reviewNotes!.trim(),
-        maxLines: 5,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: p.ink,
-          fontSize: 13,
-          height: 1.3,
-          fontStyle: FontStyle.italic,
-        ),
-      ),
-    ],
-    if ((tag ?? '').trim().isNotEmpty) _taglineLine(tag!, p),
+    if ((tagline ?? '').trim().isNotEmpty) _taglineLine(tagline!, p),
   ];
 }
-
-TextStyle _sectionLabel(_Palette p) => TextStyle(
-  color: p.accent,
-  fontSize: 10,
-  fontWeight: FontWeight.w800,
-  letterSpacing: 1.4,
-);
 
 Widget _iconLine(IconData icon, String text, _Palette p) => Padding(
   padding: const EdgeInsets.only(top: 8),
@@ -1057,15 +1203,81 @@ Widget _taglineLine(String tagline, _Palette p) => Padding(
   ),
 );
 
-/// Both faces stacked — the single shareable image for a two-face report.
-class _ReportComposite extends StatelessWidget {
-  const _ReportComposite({
-    required this.front,
-    required this.back,
-    required this.style,
+/// The in-app viewer: swipe (or tap) through the report's pages, with a dot
+/// indicator. Preview only — the shared image is the stacked [_ReportComposite].
+class _PagedViewer extends StatelessWidget {
+  const _PagedViewer({
+    required this.controller,
+    required this.pages,
+    required this.page,
+    required this.onPageChanged,
+    required this.dotColor,
   });
-  final Widget front;
-  final Widget back;
+
+  final PageController controller;
+  final List<Widget> pages;
+  final int page;
+  final ValueChanged<int> onPageChanged;
+  final Color dotColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 360,
+          height: 360,
+          child: GestureDetector(
+            // Tap to advance (wrapping), as well as swipe — a flip-card feel.
+            onTap: () {
+              final next = (page + 1) % pages.length;
+              controller.animateToPage(
+                next,
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+              );
+            },
+            child: PageView(
+              controller: controller,
+              onPageChanged: onPageChanged,
+              children: [for (final pg in pages) Center(child: pg)],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (int i = 0; i < pages.length; i++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: i == page ? 9 : 7,
+                height: i == page ? 9 : 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i == page
+                      ? dotColor
+                      : dotColor.withValues(alpha: 0.3),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${page + 1} / ${pages.length}',
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      ],
+    );
+  }
+}
+
+/// Every page stacked — the single shareable image for a multi-page report.
+class _ReportComposite extends StatelessWidget {
+  const _ReportComposite({required this.pages, required this.style});
+  final List<Widget> pages;
   final _CardStyle style;
 
   @override
@@ -1078,64 +1290,12 @@ class _ReportComposite extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [front, const SizedBox(height: 10), back],
-      ),
-    );
-  }
-}
-
-/// Tap to flip between the two faces. Preview only — the shared image is the
-/// stacked [_ReportComposite].
-class _FlipCard extends StatefulWidget {
-  const _FlipCard({required this.front, required this.back});
-  final Widget front;
-  final Widget back;
-
-  @override
-  State<_FlipCard> createState() => _FlipCardState();
-}
-
-class _FlipCardState extends State<_FlipCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 500),
-  );
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _toggle() {
-    if (_ctrl.isAnimating) return;
-    _ctrl.value < 0.5 ? _ctrl.forward() : _ctrl.reverse();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _toggle,
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, _) {
-          final angle = _ctrl.value * math.pi;
-          final showFront = angle <= math.pi / 2;
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(angle),
-            child: showFront
-                ? widget.front
-                : Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()..rotateY(math.pi),
-                    child: widget.back,
-                  ),
-          );
-        },
+        children: [
+          for (int i = 0; i < pages.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            pages[i],
+          ],
+        ],
       ),
     );
   }
