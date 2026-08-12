@@ -185,6 +185,8 @@ class PagedViewer extends StatelessWidget {
     required this.page,
     required this.onPageChanged,
     required this.dotColor,
+    this.pageWidth = 360,
+    this.pageHeight = 360,
   });
 
   final PageController controller;
@@ -193,14 +195,19 @@ class PagedViewer extends StatelessWidget {
   final ValueChanged<int> onPageChanged;
   final Color dotColor;
 
+  /// The page size — 360×360 for the generic report cards, but the Day Card's
+  /// faces are taller, so it's configurable.
+  final double pageWidth;
+  final double pageHeight;
+
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 360,
-          height: 360,
+          width: pageWidth,
+          height: pageHeight,
           child: GestureDetector(
             // Tap to advance (wrapping), as well as swipe — a flip-card feel.
             onTap: () {

@@ -1,14 +1,8 @@
-import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/platform.dart';
 import '../../data/database.dart';
@@ -19,6 +13,7 @@ import '../../domain/world_days.dart';
 import '../../providers.dart';
 import '../areas/area_icons.dart' as ai;
 import '../settings/lan_sync_screen.dart';
+import 'share_card_deck.dart';
 import 'share_channels.dart';
 
 /// A single area's tally for the day — name, colour, how many committed and how
@@ -164,7 +159,15 @@ class RitualCardScreen extends ConsumerStatefulWidget {
 
 class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
   final _captureKey = GlobalKey();
+  final PageController _pager = PageController();
+  int _page = 0;
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
+  }
 
   /// When a card was last shared for this day (from any device) — so we can say
   /// "you already shared one — revise?" instead of silently duplicating.
@@ -193,40 +196,12 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
   Future<void> _shareCard() async {
     setState(() => _busy = true);
     try {
-      final boundary =
-          _captureKey.currentContext!.findRenderObject()
-              as RenderRepaintBoundary;
-      final image = await boundary.toImage(pixelRatio: 3);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (data == null) throw 'Could not render the card.';
-      final bytes = data.buffer.asUint8List();
-
-      if (isDesktop) {
-        // Desktop has no OS share sheet for a file, so a share would silently do
-        // nothing. Save the card where the user can grab it and attach it in
-        // WhatsApp / mail themselves, and open the folder for them.
-        final dir =
-            await getDownloadsDirectory() ??
-            await getApplicationDocumentsDirectory();
-        final file = File('${dir.path}/saara-day.png');
-        await file.writeAsBytes(bytes);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 8),
-            content: Text('Card saved to ${file.path}'),
-            action: SnackBarAction(
-              label: 'Open folder',
-              onPressed: () => launchUrl(Uri.file(dir.path)),
-            ),
-          ),
-        );
-      } else {
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/saara-day.png');
-        await file.writeAsBytes(bytes);
-        await Share.shareXFiles([XFile(file.path)], text: _messageText());
-      }
+      await shareOrSaveCardImage(
+        context,
+        captureKey: _captureKey,
+        text: _messageText(),
+        fileBase: 'saara-day',
+      );
       await _stampShared();
     } catch (e) {
       if (mounted) {
@@ -393,15 +368,25 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
               _freshnessNote(),
               if (_alreadySharedAt != null) _alreadySharedNote(),
               Center(
-                child: _FlipCard(
-                  front: _DayFace(data: _d, open: true),
-                  back: _DayFace(data: _d, open: false),
+                child: PagedViewer(
+                  controller: _pager,
+                  page: _page,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  dotColor: Theme.of(context).colorScheme.primary,
+                  pageWidth: 380,
+                  pageHeight: 466,
+                  pages: [
+                    _DayFace(data: _d, open: true),
+                    _DayFace(data: _d, open: false),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  'Tap the card to flip — open on one side, close on the other.',
+                  'Swipe or tap the card — open on one side, close on the '
+                  'other. Shared as one image showing both.',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -452,87 +437,16 @@ class _RitualCardScreenState extends ConsumerState<RitualCardScreen> {
               offset: const Offset(-5000, 0),
               child: RepaintBoundary(
                 key: _captureKey,
-                child: _DayComposite(data: _d),
+                child: ReportComposite(
+                  style: CardStyle.dark,
+                  pages: [
+                    _DayFace(data: _d, open: true),
+                    _DayFace(data: _d, open: false),
+                  ],
+                ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FlipCard extends StatefulWidget {
-  const _FlipCard({required this.front, required this.back});
-  final Widget front;
-  final Widget back;
-
-  @override
-  State<_FlipCard> createState() => _FlipCardState();
-}
-
-class _FlipCardState extends State<_FlipCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 500),
-  );
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _toggle() {
-    if (_ctrl.isAnimating) return;
-    _ctrl.value < 0.5 ? _ctrl.forward() : _ctrl.reverse();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _toggle,
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, _) {
-          final angle = _ctrl.value * math.pi;
-          final showFront = angle <= math.pi / 2;
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(angle),
-            child: showFront
-                ? widget.front
-                : Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()..rotateY(math.pi),
-                    child: widget.back,
-                  ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Both faces stacked — the single shareable image.
-class _DayComposite extends StatelessWidget {
-  const _DayComposite({required this.data});
-  final DayCardData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF0E0E12),
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _DayFace(data: data, open: true),
-          const SizedBox(height: 10),
-          _DayFace(data: data, open: false),
         ],
       ),
     );
