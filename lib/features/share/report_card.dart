@@ -14,42 +14,22 @@ CardFrame reportSummaryCard({
   required Task task,
   required CardPalette palette,
   String? areaName,
+  bool showWhen = true,
+  bool showStatus = true,
+  bool showOutcome = true,
 }) {
   final p = palette;
   final (icon, label) = reportEyebrow(task.status);
   final when = task.scheduledStart ?? task.dueDate;
   final body = <Widget>[
-    Text(
-      task.title,
-      maxLines: 4,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: p.ink,
-        fontSize: task.title.length > 46 ? 24 : 30,
-        height: 1.15,
-        fontWeight: FontWeight.w800,
-        letterSpacing: -0.5,
-      ),
-    ),
-    if (when != null) ...[
-      const SizedBox(height: 14),
-      Text(
-        DateFormat('EEEE, d MMMM').format(when),
-        style: TextStyle(
-          color: p.ink,
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      Text(
-        _timeLine(when, task.durationMin),
-        style: TextStyle(color: p.muted, fontSize: 14),
-      ),
+    _titleText(task, p),
+    if (showWhen && when != null) ..._whenBlock(when, task.durationMin, p),
+    if (showStatus) ...[
+      const SizedBox(height: 10),
+      ReportStatusPill(status: task.status, due: task.dueDate),
     ],
-    const SizedBox(height: 10),
-    ReportStatusPill(status: task.status, due: task.dueDate),
-    if (task.completedAt != null ||
-        (task.timeToCompleteMin ?? 0) > 0) ...[
+    if (showOutcome &&
+        (task.completedAt != null || (task.timeToCompleteMin ?? 0) > 0)) ...[
       const SizedBox(height: 8),
       if (task.completedAt != null)
         Text(
@@ -70,6 +50,110 @@ CardFrame reportSummaryCard({
     badgeName: areaName,
     body: body,
   );
+}
+
+/// A single-page **invitation** card for the book — the forward-looking face.
+CardFrame invitationSummaryCard({
+  required Task task,
+  required CardPalette palette,
+  String? areaName,
+  bool showWhen = true,
+  bool showJoin = true,
+  bool showLocation = true,
+}) {
+  final p = palette;
+  final isEvent = task.kind == TaskKind.event;
+  final when = task.scheduledStart ?? task.dueDate;
+  final join = (task.meetingLink ?? '').trim();
+  final loc = (task.locationName ?? '').trim();
+  final body = <Widget>[
+    _titleText(task, p),
+    if (showWhen && when != null) ..._whenBlock(when, task.durationMin, p),
+    if (showJoin && join.isNotEmpty) ...[
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.accent.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_rounded, size: 16, color: p.accent),
+            const SizedBox(width: 8),
+            Text(
+              _joinLabel(join).toUpperCase(),
+              style: TextStyle(
+                color: p.accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+    if (showLocation && loc.isNotEmpty) ...[
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Icon(Icons.place_outlined, size: 14, color: p.muted),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              loc,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.muted, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    ],
+  ];
+  return CardFrame(
+    palette: p,
+    eyebrowIcon: isEvent ? Icons.event : Icons.check_circle_outline,
+    eyebrow: isEvent ? "YOU'RE INVITED" : "I'VE COMMITTED TO",
+    badgeName: areaName,
+    body: body,
+  );
+}
+
+Widget _titleText(Task task, CardPalette p) => Text(
+  task.title,
+  maxLines: 4,
+  overflow: TextOverflow.ellipsis,
+  style: TextStyle(
+    color: p.ink,
+    fontSize: task.title.length > 46 ? 24 : 30,
+    height: 1.15,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.5,
+  ),
+);
+
+List<Widget> _whenBlock(DateTime when, int? dur, CardPalette p) => [
+  const SizedBox(height: 14),
+  Text(
+    DateFormat('EEEE, d MMMM').format(when),
+    style: TextStyle(color: p.ink, fontSize: 15, fontWeight: FontWeight.w600),
+  ),
+  Text(
+    _timeLine(when, dur),
+    style: TextStyle(color: p.muted, fontSize: 14),
+  ),
+];
+
+String _joinLabel(String link) {
+  final l = link.toLowerCase();
+  if (l.contains('meet.google')) return 'Google Meet';
+  if (l.contains('zoom.')) return 'Zoom';
+  if (l.contains('teams.')) return 'Microsoft Teams';
+  if (l.contains('webex')) return 'Webex';
+  return 'Join meeting';
 }
 
 /// The report eyebrow (icon + label), keyed to how the word landed.

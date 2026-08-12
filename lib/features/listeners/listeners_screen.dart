@@ -10,6 +10,7 @@ import '../../domain/enums.dart';
 import '../../domain/listener_report.dart';
 import '../../domain/reliability.dart';
 import '../../providers.dart';
+import '../share/day_book_screen.dart';
 import 'add_listener_screen.dart';
 import 'listener_report_card_screen.dart';
 
@@ -23,7 +24,18 @@ class ListenersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(listenersProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Committed listeners')),
+      appBar: AppBar(
+        title: const Text('Committed listeners'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_stories_outlined),
+            tooltip: 'Share book',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DayBookScreen()),
+            ),
+          ),
+        ],
+      ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
