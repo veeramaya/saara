@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,7 +27,9 @@ import 'share_channels.dart';
 ///
 /// Either way the sharer decides *which fields travel*. Only ticked fields land
 /// on the card and in the message; notes, restoration and scores stay off
-/// unless deliberately turned on. The card is a real widget captured through a
+/// unless deliberately turned on. A report with details spills onto a second
+/// face — a flip card in-app, both faces stacked into one image when shared, so
+/// nothing ever clips. Everything is a real widget captured through a
 /// [RepaintBoundary] at 3× — no image library, no server, nothing leaves the
 /// device until a share target is picked.
 class InviteCardScreen extends ConsumerStatefulWidget {
@@ -108,6 +111,10 @@ const _reportFields = [
   _Field.restoration,
 ];
 
+// The fields that live on the *back* face of a report — the longer, less
+// glanceable ones. When none of these are on, the report is a single face.
+const _reportBackFields = [_Field.location, _Field.notes, _Field.restoration];
+
 class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
   final _cardKey = GlobalKey();
   _CardStyle _style = _CardStyle.brand;
@@ -122,6 +129,12 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
 
   bool get _isEvent => widget.task.kind == TaskKind.event;
   bool _on(_Field f) => _fields.contains(f);
+
+  /// True when a report has enough detail to warrant a second face.
+  bool get _hasBack =>
+      _mode == ShareMode.report &&
+      (_reportBackFields.any((f) => _on(f) && _has(f)) ||
+          (_tagline ?? '').trim().isNotEmpty);
 
   /// Does the task carry any data for [f]? A field with nothing behind it is
   /// never offered — no empty "Location:" lines, no dead toggles.
@@ -176,7 +189,7 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     try {
       final boundary =
           _cardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      // 3× a 360pt card → 1080×1080, the size social platforms want.
+      // 3× a 360pt-wide card → 1080 wide, the size social platforms want.
       final image = await boundary.toImage(pixelRatio: 3);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (data == null) throw 'Could not render the card.';
@@ -352,7 +365,9 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     }
     if (_on(_Field.outcome)) {
       if (t.completedAt != null) {
-        b.writeln('Completed: ${DateFormat('d MMM, h:mm a').format(t.completedAt!)}');
+        b.writeln(
+          'Completed: ${DateFormat('d MMM, h:mm a').format(t.completedAt!)}',
+        );
       }
       if (t.timeToCompleteMin != null) {
         b.writeln('Took: ${_fmtDuration(t.timeToCompleteMin!)}');
@@ -398,17 +413,6 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     }
   }
 
-  static String _timeLine(DateTime when, int? dur) => dur == null
-      ? DateFormat('h:mm a').format(when)
-      : '${DateFormat('h:mm a').format(when)} – '
-            '${DateFormat('h:mm a').format(when.add(Duration(minutes: dur)))}';
-
-  static String _fmtDuration(int min) {
-    if (min < 60) return '${min}m';
-    final h = min ~/ 60, m = min % 60;
-    return m == 0 ? '${h}h' : '${h}h ${m}m';
-  }
-
   /// Name the join button after the platform so the recipient knows what opens.
   static String _joinLabel(String link) {
     final l = link.toLowerCase();
@@ -431,231 +435,345 @@ class _InviteCardScreenState extends ConsumerState<InviteCardScreen> {
     );
   }
 
+  /// Build a fresh front/summary face (a new instance each call, so it can be
+  /// used both in the visible preview and the off-screen capture).
+  Widget _buildFront() {
+    final p = _Palette.of(_style, widget.areaColor, widget.areaIconName);
+    final (icon, label) = _mode == ShareMode.report
+        ? _reportEyebrow(widget.task.status)
+        : (
+            _isEvent ? Icons.event : Icons.check_circle_outline,
+            _isEvent ? "YOU'RE INVITED" : "I'VE COMMITTED TO",
+          );
+    return _CardFrame(
+      palette: p,
+      eyebrowIcon: icon,
+      eyebrow: label,
+      areaName: _on(_Field.area) ? widget.areaName : null,
+      body: _mode == ShareMode.report
+          ? _reportFrontBody(widget.task, p, _fields)
+          : _invitationBody(widget.task, p, _fields, _tagline),
+    );
+  }
+
+  Widget _buildBack() {
+    final p = _Palette.of(_style, widget.areaColor, widget.areaIconName);
+    return _CardFrame(
+      palette: p,
+      eyebrowIcon: Icons.notes_outlined,
+      eyebrow: 'DETAILS',
+      areaName: _on(_Field.area) ? widget.areaName : null,
+      body: _reportBackBody(widget.task, p, _fields, _tagline),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final offered = _offered(_mode);
+    final hasBack = _hasBack;
+
+    // The visible preview: a flip card when a report has a back face, otherwise
+    // a single card that doubles as the capture target.
+    final Widget preview = hasBack
+        ? _FlipCard(front: _buildFront(), back: _buildBack())
+        : RepaintBoundary(key: _cardKey, child: _buildFront());
+
     return Scaffold(
       appBar: AppBar(title: const Text('Share')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
+      body: Stack(
         children: [
-          Center(
-            child: RepaintBoundary(
-              key: _cardKey,
-              child: _Card(
-                task: widget.task,
-                areaName: widget.areaName,
-                areaIconName: widget.areaIconName,
-                areaColor: widget.areaColor,
-                tagline: _tagline,
-                style: _style,
-                mode: _mode,
-                fields: _fields,
+          ListView(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              24,
+              24,
+              24 + MediaQuery.of(context).padding.bottom,
+            ),
+            children: [
+              Center(child: preview),
+              if (hasBack) ...[
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    'Tap the card to flip — summary on one side, details on '
+                    'the other. Shared as one image showing both.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              // Direction: invitation (before) vs report (after).
+              Center(
+                child: SegmentedButton<ShareMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ShareMode.invitation,
+                      icon: Icon(Icons.mail_outline, size: 18),
+                      label: Text('Invitation'),
+                    ),
+                    ButtonSegment(
+                      value: ShareMode.report,
+                      icon: Icon(Icons.assignment_turned_in_outlined, size: 18),
+                      label: Text('Report'),
+                    ),
+                  ],
+                  selected: {_mode},
+                  onSelectionChanged: (s) => _setMode(s.first),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Field selection — tick what travels. Only populated fields appear.
+              Text('Include', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              if (offered.isEmpty)
+                Text(
+                  'Just the title — this ${_isEvent ? 'event' : 'task'} has no '
+                  'other details to add yet.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final f in offered)
+                      FilterChip(
+                        label: Text(_fieldLabel(f)),
+                        selected: _on(f),
+                        onSelected: (v) => setState(
+                          () => v ? _fields.add(f) : _fields.remove(f),
+                        ),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 20),
+              Center(
+                child: SegmentedButton<_CardStyle>(
+                  segments: const [
+                    ButtonSegment(
+                      value: _CardStyle.brand,
+                      label: Text('Brand'),
+                    ),
+                    ButtonSegment(
+                      value: _CardStyle.light,
+                      label: Text('Light'),
+                    ),
+                    ButtonSegment(value: _CardStyle.dark, label: Text('Dark')),
+                  ],
+                  selected: {_style},
+                  onSelectionChanged: (s) => setState(() => _style = s.first),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Optional, opt-in flourish. Deliberately a *line of text*, not a
+              // generated image: neither BYOK provider gives reliable image
+              // generation, and a one-line completion costs a fraction of a cent
+              // where an image would be orders of magnitude more.
+              Center(
+                child: Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: _aiBusy
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_awesome, size: 18),
+                      label: Text(
+                        _tagline == null
+                            ? 'Add a line with AI'
+                            : 'Rewrite with AI',
+                      ),
+                      onPressed: _aiBusy ? null : _generateTagline,
+                    ),
+                    if (_tagline != null)
+                      TextButton(
+                        onPressed: () => setState(() => _tagline = null),
+                        child: const Text('Remove'),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                icon: _busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(isDesktop ? Icons.download : Icons.ios_share),
+                label: Text(
+                  isDesktop
+                      ? 'Save card'
+                      : _mode == ShareMode.report
+                      ? 'Share report card'
+                      : 'Share card',
+                ),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                onPressed: _busy ? null : _share,
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.notes),
+                label: const Text('Share as text only'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: _shareText,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'The card is sent with the details as message text — so a join '
+                'or details link stays tappable (a link printed into an image '
+                'would not be). Text-only sends just those details.\n\n'
+                'Only the fields you tick are shared. Notes, restoration and '
+                'your scores are never shared unless you turn them on.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          // Off-screen capture target for the two-face report: both faces
+          // stacked into one image (the flip preview can't be captured mid-turn).
+          if (hasBack)
+            Positioned(
+              left: 0,
+              top: 0,
+              child: Transform.translate(
+                offset: const Offset(-5000, 0),
+                child: RepaintBoundary(
+                  key: _cardKey,
+                  child: _ReportComposite(
+                    front: _buildFront(),
+                    back: _buildBack(),
+                    style: _style,
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          // Direction: invitation (before) vs report (after).
-          Center(
-            child: SegmentedButton<ShareMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ShareMode.invitation,
-                  icon: Icon(Icons.mail_outline, size: 18),
-                  label: Text('Invitation'),
-                ),
-                ButtonSegment(
-                  value: ShareMode.report,
-                  icon: Icon(Icons.assignment_turned_in_outlined, size: 18),
-                  label: Text('Report'),
-                ),
-              ],
-              selected: {_mode},
-              onSelectionChanged: (s) => _setMode(s.first),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Field selection — tick what travels. Only populated fields appear.
-          Text(
-            'Include',
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(height: 8),
-          if (offered.isEmpty)
-            Text(
-              'Just the title — this ${_isEvent ? 'event' : 'task'} has no '
-              'other details to add yet.',
-              style: Theme.of(context).textTheme.bodySmall,
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final f in offered)
-                  FilterChip(
-                    label: Text(_fieldLabel(f)),
-                    selected: _on(f),
-                    onSelected: (v) => setState(
-                      () => v ? _fields.add(f) : _fields.remove(f),
-                    ),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 20),
-          Center(
-            child: SegmentedButton<_CardStyle>(
-              segments: const [
-                ButtonSegment(value: _CardStyle.brand, label: Text('Brand')),
-                ButtonSegment(value: _CardStyle.light, label: Text('Light')),
-                ButtonSegment(value: _CardStyle.dark, label: Text('Dark')),
-              ],
-              selected: {_style},
-              onSelectionChanged: (s) => setState(() => _style = s.first),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Optional, opt-in flourish. Deliberately a *line of text*, not a
-          // generated image: neither BYOK provider gives reliable image
-          // generation, and a one-line completion costs a fraction of a cent
-          // where an image would be orders of magnitude more.
-          Center(
-            child: Wrap(
-              spacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                OutlinedButton.icon(
-                  icon: _aiBusy
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.auto_awesome, size: 18),
-                  label: Text(
-                    _tagline == null ? 'Add a line with AI' : 'Rewrite with AI',
-                  ),
-                  onPressed: _aiBusy ? null : _generateTagline,
-                ),
-                if (_tagline != null)
-                  TextButton(
-                    onPressed: () => setState(() => _tagline = null),
-                    child: const Text('Remove'),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            icon: _busy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.ios_share),
-            label: Text(
-              _mode == ShareMode.report ? 'Share report card' : 'Share card',
-            ),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            onPressed: _busy ? null : _share,
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.notes),
-            label: const Text('Share as text only'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            onPressed: _shareText,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'The card is a 1080×1080 image, sent with the details as message '
-            'text — so a join or details link stays tappable (a link printed '
-            'into an image would not be). Text-only sends just those details.\n\n'
-            'Only the fields you tick are shared. Notes, restoration and your '
-            'scores are never shared unless you turn them on.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
         ],
       ),
     );
   }
 }
 
-/// The card itself — fixed 360×360 logical, captured at 3×.
-class _Card extends StatelessWidget {
-  const _Card({
-    required this.task,
-    required this.style,
-    required this.mode,
-    required this.fields,
-    this.areaName,
-    this.areaIconName,
-    this.areaColor,
-    this.tagline,
+// --- shared helpers -------------------------------------------------------
+
+String _timeLine(DateTime when, int? dur) => dur == null
+    ? DateFormat('h:mm a').format(when)
+    : '${DateFormat('h:mm a').format(when)} – '
+          '${DateFormat('h:mm a').format(when.add(Duration(minutes: dur)))}';
+
+String _fmtDuration(int min) {
+  if (min < 60) return '${min}m';
+  final h = min ~/ 60, m = min % 60;
+  return m == 0 ? '${h}h' : '${h}h ${m}m';
+}
+
+(IconData, String) _reportEyebrow(TaskStatus status) {
+  switch (status) {
+    case TaskStatus.completed:
+      return (Icons.verified_outlined, 'KEPT MY WORD');
+    case TaskStatus.cancelled:
+      return (Icons.remove_circle_outline, 'I FELL SHORT');
+    case TaskStatus.missed:
+      return (Icons.error_outline, 'MISSED');
+    case TaskStatus.rejected:
+      return (Icons.do_not_disturb_on_outlined, 'DECLINED');
+    default:
+      return (Icons.timelapse_outlined, 'WHERE THIS STANDS');
+  }
+}
+
+/// Short platform-named label for the card's JOIN pill (kept snappy — the full
+/// "Join Google Meet" phrasing lives in the message text).
+String _joinLabelForCard(String link) {
+  final l = link.toLowerCase();
+  if (l.contains('meet.google')) return 'Google Meet';
+  if (l.contains('zoom.')) return 'Zoom';
+  if (l.contains('teams.')) return 'Microsoft Teams';
+  if (l.contains('webex')) return 'Webex';
+  return 'Join meeting';
+}
+
+// --- card faces -----------------------------------------------------------
+
+/// The resolved colours for a card, derived once from the style + area colour.
+class _Palette {
+  const _Palette({
+    required this.bg,
+    required this.ink,
+    required this.muted,
+    required this.accent,
+    required this.icon,
   });
-  final Task task;
-  final _CardStyle style;
-  final ShareMode mode;
-  final Set<_Field> fields;
-  final String? areaName;
-  final String? areaIconName;
-  final String? areaColor;
-  final String? tagline;
+
+  final Color bg, ink, muted, accent;
+  final IconData icon;
 
   static const _brand = Color(0xFFCC1A1A);
 
-  bool _on(_Field f) => fields.contains(f);
-
-  @override
-  Widget build(BuildContext context) {
-    final isEvent = task.kind == TaskKind.event;
-    final isReport = mode == ShareMode.report;
-    final when = task.scheduledStart ?? task.dueDate;
-    final dur = task.durationMin;
-
+  factory _Palette.of(_CardStyle style, String? areaColor, String? areaIcon) {
     // The area's own colour leads; Saara's red is only the fallback.
-    final areaTint = ai.areaColor(areaColor) ?? _brand;
-    final icon = ai.areaIcon(areaIconName);
-
+    final tint = ai.areaColor(areaColor) ?? _brand;
     final (bg, ink, muted, accent) = switch (style) {
-      _CardStyle.brand => (
-        areaTint,
-        Colors.white,
-        Colors.white70,
-        Colors.white,
-      ),
+      _CardStyle.brand => (tint, Colors.white, Colors.white70, Colors.white),
       _CardStyle.light => (
         const Color(0xFFFAF8F6),
         const Color(0xFF1B1613),
         const Color(0xFF6D635C),
-        areaTint,
+        tint,
       ),
       _CardStyle.dark => (
         const Color(0xFF141110),
         const Color(0xFFF2ECE7),
         const Color(0xFFA99F97),
-        _lighten(areaTint),
+        Color.lerp(tint, Colors.white, 0.45) ?? tint,
       ),
     };
+    return _Palette(
+      bg: bg,
+      ink: ink,
+      muted: muted,
+      accent: accent,
+      icon: ai.areaIcon(areaIcon),
+    );
+  }
+}
 
-    final (eyebrowIcon, eyebrow) = isReport
-        ? _reportEyebrow()
-        : (
-            isEvent ? Icons.event : Icons.check_circle_outline,
-            isEvent ? "YOU'RE INVITED" : "I'VE COMMITTED TO",
-          );
+/// A 360×360 card shell: watermark, eyebrow at the top, the given [body] in the
+/// middle, and the area badge at the foot. Every face — invitation, report
+/// front, report back — is one of these.
+class _CardFrame extends StatelessWidget {
+  const _CardFrame({
+    required this.palette,
+    required this.eyebrowIcon,
+    required this.eyebrow,
+    required this.body,
+    this.areaName,
+  });
 
+  final _Palette palette;
+  final IconData eyebrowIcon;
+  final String eyebrow;
+  final List<Widget> body;
+  final String? areaName;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
     return Container(
       width: 360,
       height: 360,
       decoration: BoxDecoration(
-        color: bg,
+        color: p.bg,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Stack(
@@ -664,7 +782,11 @@ class _Card extends StatelessWidget {
           Positioned(
             right: -28,
             bottom: -24,
-            child: Icon(icon, size: 190, color: accent.withValues(alpha: 0.10)),
+            child: Icon(
+              p.icon,
+              size: 190,
+              color: p.accent.withValues(alpha: 0.10),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(28),
@@ -673,7 +795,7 @@ class _Card extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(eyebrowIcon, size: 16, color: accent),
+                    Icon(eyebrowIcon, size: 16, color: p.accent),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -681,7 +803,7 @@ class _Card extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: accent,
+                          color: p.accent,
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.6,
@@ -691,165 +813,21 @@ class _Card extends StatelessWidget {
                   ],
                 ),
                 const Spacer(),
-                Text(
-                  task.title,
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: task.title.length > 46 ? 24 : 30,
-                    height: 1.15,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                if (_on(_Field.when) && when != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    DateFormat('EEEE, d MMMM').format(when),
-                    style: TextStyle(
-                      color: ink,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    _InviteCardScreenState._timeLine(
-                      when,
-                      _on(_Field.duration) ? dur : null,
-                    ),
-                    style: TextStyle(color: muted, fontSize: 14),
-                  ),
-                ],
-                // Report: status + outcome read where the join pill would sit.
-                if (isReport && _on(_Field.status)) ...[
-                  const SizedBox(height: 10),
-                  _StatusPill(status: task.status, due: task.dueDate),
-                ],
-                if (isReport && _on(_Field.outcome)) ...[
-                  const SizedBox(height: 8),
-                  if (task.completedAt != null)
-                    Text(
-                      'Completed ${DateFormat('d MMM, h:mm a').format(task.completedAt!)}',
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                  if (task.timeToCompleteMin != null)
-                    Text(
-                      'Took ${_InviteCardScreenState._fmtDuration(task.timeToCompleteMin!)}',
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                ],
-                // Invitation: a video-meeting's one wanted thing is the join
-                // link. The URL can't live on an image (it'd be dead), so the
-                // card shows a bold JOIN pill pointing to the message, where the
-                // tappable link sits at the top.
-                if (!isReport &&
-                    _on(_Field.joinLink) &&
-                    (task.meetingLink ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.videocam_rounded, size: 16, color: accent),
-                        const SizedBox(width: 8),
-                        Text(
-                          _joinLabelForCard(task.meetingLink!).toUpperCase(),
-                          style: TextStyle(
-                            color: accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Tap the link in the message to join',
-                    style: TextStyle(color: muted, fontSize: 11),
-                  ),
-                ],
-                if (_on(_Field.location) &&
-                    (task.locationName ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(Icons.place_outlined, size: 14, color: muted),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          task.locationName!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: muted, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                if (_on(_Field.notes) && (task.notes ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    task.notes!.trim(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: muted, fontSize: 13, height: 1.25),
-                  ),
-                ],
-                if (isReport &&
-                    _on(_Field.restoration) &&
-                    (task.reviewNotes ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Restoring: ${task.reviewNotes!.trim()}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: muted,
-                      fontSize: 13,
-                      height: 1.25,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-                if (tagline != null && tagline!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    tagline!.trim(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: muted,
-                      fontSize: 13,
-                      height: 1.3,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
+                ...body,
                 const Spacer(),
-                if (_on(_Field.area) && (areaName ?? '').isNotEmpty) ...[
-                  Divider(color: muted.withValues(alpha: 0.3), height: 1),
+                if ((areaName ?? '').isNotEmpty) ...[
+                  Divider(color: p.muted.withValues(alpha: 0.3), height: 1),
                   const SizedBox(height: 12),
-                  // The area is the badge — its own icon and name, not a Saara advert.
+                  // The area is the badge — its own icon and name, not an advert.
                   Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.15),
+                          color: p.accent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(icon, size: 16, color: accent),
+                        child: Icon(p.icon, size: 16, color: p.accent),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -858,7 +836,7 @@ class _Card extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: accent,
+                            color: p.accent,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.4,
@@ -875,36 +853,292 @@ class _Card extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// Eyebrow (icon + label) for a report card, keyed to how the word landed.
-  (IconData, String) _reportEyebrow() {
-    switch (task.status) {
-      case TaskStatus.completed:
-        return (Icons.verified_outlined, 'KEPT MY WORD');
-      case TaskStatus.cancelled:
-        return (Icons.remove_circle_outline, 'I FELL SHORT');
-      case TaskStatus.missed:
-        return (Icons.error_outline, 'MISSED');
-      case TaskStatus.rejected:
-        return (Icons.do_not_disturb_on_outlined, 'DECLINED');
-      default:
-        return (Icons.timelapse_outlined, 'WHERE THIS STANDS');
-    }
+/// The title + when + (invitation extras) — the common opening of a face.
+Widget _title(Task t, _Palette p) => Text(
+  t.title,
+  maxLines: 4,
+  overflow: TextOverflow.ellipsis,
+  style: TextStyle(
+    color: p.ink,
+    fontSize: t.title.length > 46 ? 24 : 30,
+    height: 1.15,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.5,
+  ),
+);
+
+List<Widget> _whenBlock(Task t, _Palette p, bool showDuration) {
+  final when = t.scheduledStart ?? t.dueDate;
+  if (when == null) return const [];
+  return [
+    const SizedBox(height: 14),
+    Text(
+      DateFormat('EEEE, d MMMM').format(when),
+      style: TextStyle(color: p.ink, fontSize: 15, fontWeight: FontWeight.w600),
+    ),
+    Text(
+      _timeLine(when, showDuration ? t.durationMin : null),
+      style: TextStyle(color: p.muted, fontSize: 14),
+    ),
+  ];
+}
+
+List<Widget> _invitationBody(
+  Task t,
+  _Palette p,
+  Set<_Field> f,
+  String? tagline,
+) {
+  bool on(_Field x) => f.contains(x);
+  return [
+    _title(t, p),
+    if (on(_Field.when)) ..._whenBlock(t, p, on(_Field.duration)),
+    // A video-meeting's one wanted thing is the join link. The URL can't live
+    // on an image (it'd be dead), so the card shows a bold JOIN pill pointing to
+    // the message, where the tappable link sits at the top.
+    if (on(_Field.joinLink) && (t.meetingLink ?? '').trim().isNotEmpty) ...[
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.accent.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_rounded, size: 16, color: p.accent),
+            const SizedBox(width: 8),
+            Text(
+              _joinLabelForCard(t.meetingLink!).toUpperCase(),
+              style: TextStyle(
+                color: p.accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        'Tap the link in the message to join',
+        style: TextStyle(color: p.muted, fontSize: 11),
+      ),
+    ],
+    if (on(_Field.location) && (t.locationName ?? '').trim().isNotEmpty)
+      _iconLine(Icons.place_outlined, t.locationName!, p),
+    if (on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) ...[
+      const SizedBox(height: 8),
+      Text(
+        t.notes!.trim(),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: p.muted, fontSize: 13, height: 1.25),
+      ),
+    ],
+    if ((tagline ?? '').trim().isNotEmpty) _taglineLine(tagline!, p),
+  ];
+}
+
+List<Widget> _reportFrontBody(Task t, _Palette p, Set<_Field> f) {
+  bool on(_Field x) => f.contains(x);
+  return [
+    _title(t, p),
+    if (on(_Field.when)) ..._whenBlock(t, p, on(_Field.duration)),
+    if (on(_Field.status)) ...[
+      const SizedBox(height: 10),
+      _StatusPill(status: t.status, due: t.dueDate),
+    ],
+    if (on(_Field.outcome)) ...[
+      const SizedBox(height: 8),
+      if (t.completedAt != null)
+        Text(
+          'Completed ${DateFormat('d MMM, h:mm a').format(t.completedAt!)}',
+          style: TextStyle(color: p.muted, fontSize: 13),
+        ),
+      if (t.timeToCompleteMin != null)
+        Text(
+          'Took ${_fmtDuration(t.timeToCompleteMin!)}',
+          style: TextStyle(color: p.muted, fontSize: 13),
+        ),
+    ],
+  ];
+}
+
+List<Widget> _reportBackBody(Task t, _Palette p, Set<_Field> f, String? tag) {
+  bool on(_Field x) => f.contains(x);
+  return [
+    // A small title reference so the details face stands on its own.
+    Text(
+      t.title,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: p.ink,
+        fontSize: 18,
+        height: 1.15,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    if (on(_Field.location) && (t.locationName ?? '').trim().isNotEmpty)
+      _iconLine(Icons.place_outlined, t.locationName!, p),
+    if (on(_Field.notes) && (t.notes ?? '').trim().isNotEmpty) ...[
+      const SizedBox(height: 12),
+      Text('NOTES', style: _sectionLabel(p)),
+      const SizedBox(height: 4),
+      Text(
+        t.notes!.trim(),
+        maxLines: 7,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: p.ink, fontSize: 13, height: 1.3),
+      ),
+    ],
+    if (on(_Field.restoration) && (t.reviewNotes ?? '').trim().isNotEmpty) ...[
+      const SizedBox(height: 12),
+      Text('RESTORING', style: _sectionLabel(p)),
+      const SizedBox(height: 4),
+      Text(
+        t.reviewNotes!.trim(),
+        maxLines: 5,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: p.ink,
+          fontSize: 13,
+          height: 1.3,
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+    ],
+    if ((tag ?? '').trim().isNotEmpty) _taglineLine(tag!, p),
+  ];
+}
+
+TextStyle _sectionLabel(_Palette p) => TextStyle(
+  color: p.accent,
+  fontSize: 10,
+  fontWeight: FontWeight.w800,
+  letterSpacing: 1.4,
+);
+
+Widget _iconLine(IconData icon, String text, _Palette p) => Padding(
+  padding: const EdgeInsets.only(top: 8),
+  child: Row(
+    children: [
+      Icon(icon, size: 14, color: p.muted),
+      const SizedBox(width: 4),
+      Expanded(
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: p.muted, fontSize: 13),
+        ),
+      ),
+    ],
+  ),
+);
+
+Widget _taglineLine(String tagline, _Palette p) => Padding(
+  padding: const EdgeInsets.only(top: 12),
+  child: Text(
+    tagline.trim(),
+    maxLines: 2,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      color: p.muted,
+      fontSize: 13,
+      height: 1.3,
+      fontStyle: FontStyle.italic,
+    ),
+  ),
+);
+
+/// Both faces stacked — the single shareable image for a two-face report.
+class _ReportComposite extends StatelessWidget {
+  const _ReportComposite({
+    required this.front,
+    required this.back,
+    required this.style,
+  });
+  final Widget front;
+  final Widget back;
+  final _CardStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = style == _CardStyle.light
+        ? const Color(0xFFEDE9E5)
+        : const Color(0xFF0E0E12);
+    return Container(
+      color: bg,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [front, const SizedBox(height: 10), back],
+      ),
+    );
+  }
+}
+
+/// Tap to flip between the two faces. Preview only — the shared image is the
+/// stacked [_ReportComposite].
+class _FlipCard extends StatefulWidget {
+  const _FlipCard({required this.front, required this.back});
+  final Widget front;
+  final Widget back;
+
+  @override
+  State<_FlipCard> createState() => _FlipCardState();
+}
+
+class _FlipCardState extends State<_FlipCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+  );
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
   }
 
-  /// Short platform-named label for the card's JOIN pill (kept snappy — the
-  /// full "Join Google Meet" phrasing lives in the message text).
-  static String _joinLabelForCard(String link) {
-    final l = link.toLowerCase();
-    if (l.contains('meet.google')) return 'Google Meet';
-    if (l.contains('zoom.')) return 'Zoom';
-    if (l.contains('teams.')) return 'Microsoft Teams';
-    if (l.contains('webex')) return 'Webex';
-    return 'Join meeting';
+  void _toggle() {
+    if (_ctrl.isAnimating) return;
+    _ctrl.value < 0.5 ? _ctrl.forward() : _ctrl.reverse();
   }
 
-  /// Slightly lift an area colour so it stays legible on the dark card.
-  static Color _lighten(Color c) => Color.lerp(c, Colors.white, 0.45) ?? c;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _toggle,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) {
+          final angle = _ctrl.value * math.pi;
+          final showFront = angle <= math.pi / 2;
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.001)
+              ..rotateY(angle),
+            child: showFront
+                ? widget.front
+                : Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()..rotateY(math.pi),
+                    child: widget.back,
+                  ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 /// The status word as a small pill on the report card, coloured by disposition.
