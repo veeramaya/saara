@@ -76,10 +76,10 @@ class TaskDetailScreen extends ConsumerWidget {
               ),
             ),
           if (editable != null)
-            IconButton(
+            PopupMenuButton<ShareMode>(
               icon: const Icon(Icons.ios_share),
-              tooltip: 'Share as card',
-              onPressed: () {
+              tooltip: 'Share',
+              onSelected: (mode) {
                 final areas =
                     ref.read(activeAreasProvider).valueOrNull ?? const [];
                 // The card is themed to the task's area — its icon and colour.
@@ -93,10 +93,29 @@ class TaskDetailScreen extends ConsumerWidget {
                       areaName: area?.displayName,
                       areaIconName: area?.icon,
                       areaColor: area?.color,
+                      initialMode: mode,
                     ),
                   ),
                 );
               },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: ShareMode.invitation,
+                  child: ListTile(
+                    leading: Icon(Icons.mail_outline),
+                    title: Text('Send as invitation'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: ShareMode.report,
+                  child: ListTile(
+                    leading: Icon(Icons.assignment_turned_in_outlined),
+                    title: Text('Send as report'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
             ),
           if (editable != null)
             IconButton(
