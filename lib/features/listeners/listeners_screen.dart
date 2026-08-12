@@ -141,37 +141,86 @@ class _ListenerCard extends ConsumerWidget {
     final scoped = listener.scope == ListenerScope.area
         ? scores.where((s) => s.area.id == listener.scopeId)
         : scores;
-    final text = buildListenerReport(
+    final areaList = [
+      for (final s in scoped) (name: s.area.displayName, score: s.score),
+    ];
+    final now = DateTime.now();
+
+    // Which sections are offered — "By area" only when there are scores.
+    final offered = [
+      ListenerReportField.completion,
+      ListenerReportField.counts,
+      ListenerReportField.streak,
+      if (areaList.isNotEmpty) ListenerReportField.byArea,
+      ListenerReportField.footer,
+    ];
+    final selected = offered.toSet();
+
+    String build() => buildListenerReport(
       forName: listener.displayName,
       summary: summary,
-      areas: [
-        for (final s in scoped) (name: s.area.displayName, score: s.score),
-      ],
-      now: DateTime.now(),
+      areas: areaList,
+      now: now,
+      fields: selected,
     );
 
     if (!context.mounted) return;
     final send = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Report preview'),
-        content: SingleChildScrollView(child: Text(text)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder: (_) => StatefulBuilder(
+        builder: (dialogCtx, setLocal) => AlertDialog(
+          title: const Text('Report preview'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Include', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final f in offered)
+                      FilterChip(
+                        label: Text(listenerReportFieldLabel(f)),
+                        selected: selected.contains(f),
+                        onSelected: (v) => setLocal(
+                          () => v ? selected.add(f) : selected.remove(f),
+                        ),
+                      ),
+                  ],
+                ),
+                const Divider(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Text(
+                      build(),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.share),
-            label: const Text('Send'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              icon: const Icon(Icons.share),
+              label: const Text('Send'),
+            ),
+          ],
+        ),
       ),
     );
     if (send != true) return;
     if (!context.mounted) return;
-    await _deliver(context, ref, text, listener);
+    await _deliver(context, ref, build(), listener);
   }
 
   /// Deliver through the user's own apps (§1.4). The OS share sheet only lists
