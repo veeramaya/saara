@@ -100,6 +100,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
   String? _area; // null = any area; _unclassifiedArea = none; else an area id
   String? _source; // null = any; else 'Desktop' / 'Mobile' / 'Google'
   Map<String, String> _origins = const {}; // taskId → origin label
+  String? _thisDevice; // this device's own name, to mark "This device"
   _SortField _sortField = _SortField.date;
   bool _sortAsc = true;
   Set<String> _withCaptures = const {};
@@ -260,6 +261,7 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
     _withCaptures =
         ref.watch(taskIdsWithCapturesProvider).valueOrNull ?? const {};
     _origins = ref.watch(taskOriginsProvider).valueOrNull ?? const {};
+    _thisDevice = ref.watch(thisDeviceLabelProvider).valueOrNull;
     final childCounts =
         ref.watch(childTaskCountsProvider).valueOrNull ?? const {};
     final q = _search.text.trim().toLowerCase();
@@ -445,6 +447,12 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                       checked: _source == null,
                       child: const Text('Any source'),
                     ),
+                    if (_thisDevice != null)
+                      CheckedPopupMenuItem(
+                        value: 'source:__this__',
+                        checked: _source != null && _source == _thisDevice,
+                        child: const Text('This device'),
+                      ),
                     CheckedPopupMenuItem(
                       value: 'source:Desktop',
                       checked: _source == 'Desktop',
@@ -501,6 +509,8 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
                     areaName: areaName[items[i].areaId],
                     hasCapture: _withCaptures.contains(items[i].id),
                     actionItems: childCounts[items[i].id] ?? 0,
+                    origin: _origins[items[i].id],
+                    thisDevice: _thisDevice,
                     onRestore: deleted ? () => _restore(items[i]) : null,
                   ),
                 );
@@ -565,7 +575,9 @@ class _TaskSearchScreenState extends ConsumerState<TaskSearchScreen> {
             _filter = _StatusFilter.values.firstWhere((f) => f.name == name);
           } else if (a.startsWith('source:')) {
             final v = a.substring(7);
-            _source = v == '__any__' ? null : v;
+            _source = v == '__any__'
+                ? null
+                : (v == '__this__' ? _thisDevice : v);
           }
       }
     });
@@ -702,12 +714,21 @@ class _TaskRow extends StatelessWidget {
     this.areaName,
     this.hasCapture = false,
     this.actionItems = 0,
+    this.origin,
+    this.thisDevice,
     this.onRestore,
   });
   final Task task;
   final String? areaName;
   final bool hasCapture;
   final int actionItems;
+
+  /// Where this task was created — a device name ("Desktop"/"Mobile"),
+  /// "Google", or "Saara". Shown so you can see each row's source at a glance.
+  final String? origin;
+
+  /// This device's own name, so an origin matching it reads "This device".
+  final String? thisDevice;
   final VoidCallback? onRestore;
 
   @override
@@ -728,6 +749,12 @@ class _TaskRow extends StatelessWidget {
     if (areaName != null) bits.add(areaName!);
     if (actionItems > 0) {
       bits.add('$actionItems action item${actionItems == 1 ? '' : 's'}');
+    }
+    // Where it was created — the local device reads "This device".
+    if (origin != null && origin!.isNotEmpty) {
+      bits.add(
+        (thisDevice != null && origin == thisDevice) ? 'This device' : origin!,
+      );
     }
     final trailingIcons = <Widget>[];
     if (task.documentLink != null || task.meetingLink != null) {

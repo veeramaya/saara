@@ -341,6 +341,16 @@ final syncFreshnessProvider =
       );
     });
 
+/// This device's own name ("Desktop" / "Mobile"), so the UI can mark which
+/// origin is the local one — a task whose origin equals this reads "This
+/// device". Null until this device has registered its label.
+final thisDeviceLabelProvider = FutureProvider<String?>((ref) async {
+  final db = ref.watch(appDatabaseProvider);
+  final settings = ref.watch(appSettingsProvider);
+  final myId = await db.deviceId();
+  return (await settings.knownDevices())[myId];
+});
+
 /// taskId → where it came from: "Google", or the device that created it
 /// ("Desktop"/"Mobile"), else "Saara". Powers the Source filter (§9). Google
 /// wins — a task pulled from Google is Google's regardless of any ledger echo.
