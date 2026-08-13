@@ -89,6 +89,24 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
             ..where((t) => t.id.equals(exceptId).not()))
           .getSingleOrNull();
 
+  /// The local occurrence of a recurring series for a given slot, under a
+  /// *different* row id. Each device materializes its own occurrence rows (fresh
+  /// ids), so a series' occurrence has no shared id across devices — its stable
+  /// identity is (series template, [occurrenceSlot]). Used by sync to unify the
+  /// same date instead of duplicating it, and to carry an occurrence's deletion
+  /// or edit across (§9).
+  Future<Task?> findOccurrenceTwin(
+    String parentRecurringId,
+    DateTime slot,
+    String exceptId,
+  ) =>
+      (select(tasks)
+            ..where((t) => t.parentRecurringId.equals(parentRecurringId))
+            ..where((t) => t.occurrenceSlot.equals(slot))
+            ..where((t) => t.id.equals(exceptId).not())
+            ..limit(1))
+          .getSingleOrNull();
+
   /// Every non-deleted task's latest area-correction, for post-merge area
   /// authority (§4.3). Area follows the ledger, never the mutable row's
   /// last-write time, so a Google refresh can't quietly overwrite a filing.

@@ -430,6 +430,23 @@ class LedgerSyncService {
             continue;
           }
         }
+        // A recurring occurrence has no shared id across devices — each device
+        // generates its own. Match it by (series, slot) so the same date unifies
+        // (no duplicate) and its deletion/edit carries across, instead of A
+        // keeping a live copy of a date B deleted.
+        if (t.parentRecurringId != null && t.occurrenceSlot != null) {
+          final twin = await db.taskDao.findOccurrenceTwin(
+            t.parentRecurringId!,
+            t.occurrenceSlot!,
+            t.id,
+          );
+          if (twin != null) {
+            idRemap[t.id] = twin.id;
+            await _mergeSaaraFields(twin, t);
+            summary.tasks++;
+            continue;
+          }
+        }
         if (await _isNewer(db.tasks, t.id, t.updatedAt)) {
           await db.into(db.tasks).insertOnConflictUpdate(t);
           summary.tasks++;
@@ -559,6 +576,11 @@ class LedgerSyncService {
         lat: Value(incomingNewer ? incoming.lat : local.lat),
         lng: Value(incomingNewer ? incoming.lng : local.lng),
         priority: Value(incomingNewer ? incoming.priority : local.priority),
+        // A deletion (or a restore) must cross too — otherwise deleting the
+        // same real item on one device leaves its twin alive on the other, and
+        // you're forced to delete it again. Last-writer-wins, so a later
+        // restore also propagates.
+        deletedAt: Value(incomingNewer ? incoming.deletedAt : local.deletedAt),
         updatedAt: Value(newStamp),
       ),
     );
