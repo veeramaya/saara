@@ -43,6 +43,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _resetting = false;
   bool _ledgerBusy = false;
   bool _checkingUpdate = false;
+  bool _deduping = false;
   String _appVersion = '';
 
   @override
@@ -122,6 +123,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
+
+  /// Clean up duplicate rows an earlier cross-device sync left behind — the
+  /// ones that overlap themselves. Soft-delete, so it's restorable from Trash.
+  Future<void> _removeDuplicates() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _deduping = true);
+    try {
+      final dao = ref.read(taskDaoProvider);
+      final ids = await dao.duplicateTaskIds();
+      if (ids.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No duplicates found — you\'re clean.')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Remove duplicates?'),
+          content: Text(
+            'Found ${ids.length} duplicate row${ids.length == 1 ? '' : 's'} — '
+            'copies an earlier sync left behind. They move to Trash and can be '
+            'restored if anything looks wrong.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      final n = await dao.deduplicateTasks();
+      _refreshAfterMerge();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Removed $n duplicate${n == 1 ? '' : 's'} — restore from Trash if '
+            'needed.',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not clean up: $e')));
+    } finally {
+      if (mounted) setState(() => _deduping = false);
     }
   }
 
@@ -217,6 +272,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: () => Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (_) => const StorageScreen())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cleaning_services_outlined),
+            title: const Text('Remove duplicate tasks'),
+            subtitle: const Text(
+              'Clean up copies an earlier sync left behind — the ones that '
+              'overlap themselves. Restorable from Trash',
+            ),
+            trailing: _deduping
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _deduping ? null : _removeDuplicates,
           ),
           ListTile(
             leading: const Icon(Icons.ios_share_outlined),

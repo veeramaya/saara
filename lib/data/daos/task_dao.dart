@@ -230,6 +230,100 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
     return n;
   }
 
+  /// Duplicate live rows produced by cross-device sync before the twin-merge
+  /// fix — the same real item under more than one row, which then "overlaps"
+  /// itself. Returns the ids to drop, keeping the best-attested survivor of
+  /// each group (a Google-linked or earliest-created row wins). Grouped by, in
+  /// order: recurring (series + slot), Google id, then exact identity for
+  /// one-offs and rules. If a duplicate *template* is dropped, its occurrences
+  /// go with it (§9 repair).
+  Future<Set<String>> duplicateTaskIds() async {
+    final live = await (select(tasks)..where((t) => t.deletedAt.isNull())).get();
+    final drop = <String>{};
+
+    String keepOf(List<Task> g) {
+      g.sort((a, b) {
+        final ga = (a.gcalEventId ?? '').isNotEmpty ? 0 : 1;
+        final gb = (b.gcalEventId ?? '').isNotEmpty ? 0 : 1;
+        if (ga != gb) return ga.compareTo(gb);
+        return a.createdAt.compareTo(b.createdAt);
+      });
+      return g.first.id;
+    }
+
+    void dedupBy(String Function(Task) key, {bool Function(Task)? include}) {
+      final groups = <String, List<Task>>{};
+      for (final t in live) {
+        if (drop.contains(t.id)) continue;
+        if (include != null && !include(t)) continue;
+        final k = key(t);
+        if (k.isEmpty) continue;
+        groups.putIfAbsent(k, () => []).add(t);
+      }
+      for (final g in groups.values) {
+        if (g.length < 2) continue;
+        final keep = keepOf(g);
+        for (final t in g) {
+          if (t.id != keep) drop.add(t.id);
+        }
+      }
+    }
+
+    // 1. Same recurring series + same slot (two devices' copies of one date).
+    dedupBy(
+      (t) => '${t.parentRecurringId}|${t.occurrenceSlot?.toIso8601String()}',
+      include: (t) => t.parentRecurringId != null && t.occurrenceSlot != null,
+    );
+    // 2. Same Google id.
+    dedupBy(
+      (t) => t.gcalEventId ?? '',
+      include: (t) => (t.gcalEventId ?? '').isNotEmpty,
+    );
+    // 3. Exact identity for one-offs and rules (never occurrences — handled).
+    dedupBy(
+      (t) => [
+        t.title.trim().toLowerCase(),
+        t.kind?.name ?? '',
+        t.rrule ?? '',
+        t.scheduledStart?.toIso8601String() ?? '',
+        t.dueDate?.toIso8601String() ?? '',
+        t.parentEventId ?? '',
+      ].join('|'),
+      include: (t) => t.parentRecurringId == null,
+    );
+    // Cascade: a dropped recurring template takes its live occurrences with it.
+    final droppedTemplates = live
+        .where(
+          (t) =>
+              drop.contains(t.id) &&
+              t.rrule != null &&
+              t.parentRecurringId == null,
+        )
+        .map((t) => t.id)
+        .toSet();
+    if (droppedTemplates.isNotEmpty) {
+      for (final t in live) {
+        if (t.parentRecurringId != null &&
+            droppedTemplates.contains(t.parentRecurringId)) {
+          drop.add(t.id);
+        }
+      }
+    }
+    return drop;
+  }
+
+  /// Soft-delete the duplicates from [duplicateTaskIds] (restorable from Trash).
+  /// Returns how many rows were removed.
+  Future<int> deduplicateTasks() async {
+    final ids = await duplicateTaskIds();
+    if (ids.isEmpty) return 0;
+    final now = DateTime.now();
+    await (update(tasks)..where((t) => t.id.isIn(ids))).write(
+      TasksCompanion(deletedAt: Value(now), updatedAt: Value(now)),
+    );
+    return ids.length;
+  }
+
   /// Ledger entries whose moment falls in [from, to) — the input to reporting
   /// (§4). Deliberately does **not** join to `tasks`: an entry is self-contained
   /// and a disposition that happened must still count once the task is gone.
