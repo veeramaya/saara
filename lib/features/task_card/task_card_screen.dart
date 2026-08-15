@@ -94,10 +94,14 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   static const _dayCodes = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
   static const _dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  /// The BYDAY set currently encoded in [_rrule], if any.
+  /// The weekdays currently encoded in [_rrule], for the toggle highlight.
+  /// Daily has no BYDAY but *means* every day, so it lights all seven — that's
+  /// what the user expects when they pick "Daily".
   Set<String> get _selectedDays {
     final r = _rrule;
-    if (r == null || !r.contains('BYDAY=')) return const {};
+    if (r == null) return const {};
+    if (r.contains('FREQ=DAILY')) return _dayCodes.toSet();
+    if (!r.contains('BYDAY=')) return const {};
     return r
         .split('BYDAY=')
         .last
