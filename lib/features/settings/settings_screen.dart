@@ -635,15 +635,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         dialogTitle: 'Choose a folder both devices can see',
       );
     }
-    // A detected root → create (or reuse) the Saara subfolder in it.
+    // A detected root → create (or reuse) the Saara subfolder in it. The
+    // create can fail on a read-only/offline mount; the writability probe in
+    // _folderSyncEnable is the real gate, so don't crash here.
     final target = Directory('$choice${Platform.pathSeparator}Saara');
-    await target.create(recursive: true);
+    try {
+      await target.create(recursive: true);
+    } catch (_) {}
     return target.path;
+  }
+
+  /// A folder can be *detected* without being *writable*: Google Drive for
+  /// Desktop's streaming "My Drive" often refuses arbitrary writes, and a mount
+  /// can be offline. Probe with a real write+read+delete before we promise to
+  /// sync through it — so we never offer a folder we can't actually use (§9).
+  Future<bool> _isFolderWritable(String dir) async {
+    try {
+      final probe = File('$dir${Platform.pathSeparator}.saara-write-test');
+      await probe.writeAsString('ok', flush: true);
+      final ok = (await probe.readAsString()) == 'ok';
+      try {
+        await probe.delete();
+      } catch (_) {}
+      return ok;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _folderSyncEnable() async {
     final dir = await _chooseSyncFolder();
     if (dir == null || !mounted) return;
+    // Verify we can actually write there before setting anything up.
+    if (!await _isFolderWritable(dir)) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Can't write to that folder"),
+          content: const Text(
+            'Saara couldn\'t save into that folder, so automatic sync won\'t '
+            'work there. Google Drive\'s streaming "My Drive" often blocks '
+            'this, or the drive is offline.\n\n'
+            'Pick a folder that syncs as real files — OneDrive, or a Google '
+            'Drive folder set to "mirror" — or use Sync over Wi-Fi instead.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     final passphrase = await _askPassphrase(creating: true);
     if (passphrase == null || passphrase.isEmpty || !mounted) return;
 
