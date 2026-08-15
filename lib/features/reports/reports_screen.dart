@@ -8,6 +8,7 @@ import '../../providers.dart';
 import '../common/top_menu.dart';
 import '../listeners/listeners_screen.dart' show listenerGapSuggestion;
 import 'integrity_wheel.dart';
+import 'report_builder_screen.dart';
 
 /// Performance dashboard (§13) — daily/weekly/monthly kept-word counts and the
 /// current streak, all computed deterministically from the integrity ledger.
@@ -22,6 +23,13 @@ class ReportsScreen extends ConsumerWidget {
         title: const Text('Performance'),
         actions: [
           const SyncStatusChip(),
+          IconButton(
+            icon: const Icon(Icons.description_outlined),
+            tooltip: 'Build report',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ReportBuilderScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(reportSummaryProvider),
