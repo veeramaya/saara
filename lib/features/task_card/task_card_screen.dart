@@ -235,6 +235,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         (widget.startWithMeet ? TaskKind.event : TaskKind.task);
     if (widget.editing != null) {
       _prefillFromTask(widget.editing!);
+      _loadSeriesRruleIfOccurrence(widget.editing!);
     }
     if (widget.startWithMeet) _generateMeet = true;
     final input = widget.initialInput;
@@ -285,6 +286,19 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     _geofence = t.geofenceEnabled;
     _lat = t.lat;
     _lng = t.lng;
+  }
+
+  /// Editing one date of a repeating task: the occurrence row carries no rrule
+  /// (only its template does), so the Repeat field would wrongly read "Once".
+  /// Pull the series' rule from the template so the actual repeat shows —
+  /// matching how any calendar/to-do app presents a recurring item.
+  Future<void> _loadSeriesRruleIfOccurrence(Task t) async {
+    final parent = t.parentRecurringId;
+    if (parent == null) return;
+    final tmpl = await ref.read(taskDaoProvider).findById(parent);
+    if (mounted && (tmpl?.rrule ?? '').isNotEmpty) {
+      setState(() => _loadRrule(tmpl!.rrule));
+    }
   }
 
   /// OCR mode: keep the full text (editable) in Notes, guess the Title from the
@@ -1559,7 +1573,11 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
         scheduledStart: Value(startVal),
         dueDate: Value(dueVal),
         durationMin: Value(_durationMin),
-        rrule: Value(_effectiveRrule),
+        // An occurrence must NEVER carry its own rrule — only its template does.
+        // Writing one here creates an instance that also looks like a template
+        // (a malformed row behind duplicate series). A one-off becoming
+        // recurring (no parent) keeps its new rule.
+        rrule: Value(t.parentRecurringId != null ? null : _effectiveRrule),
         reminderOffsets: Value(_reminderEnabled ? const [-15] : null),
         meetingLink: Value(
           _meetingLinkController.text.trim().isEmpty
@@ -1624,6 +1642,18 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       );
     } else {
       await NotificationService.instance.cancelTaskReminder(t.id);
+    }
+    // Turning a one-off into a repeating task makes this row a template. Its
+    // dates must be generated now — otherwise it becomes a hidden template with
+    // no instances and appears to vanish until the next launch, which is what
+    // led people to re-create it and end up with a duplicate series.
+    if (t.parentRecurringId == null && _effectiveRrule != null) {
+      await ref.read(recurringEngineProvider).materializeAll();
+      ref.invalidate(allTasksProvider);
+      ref.invalidate(tasksBetweenProvider);
+      ref.invalidate(
+        tasksForDayProvider(DateTime(now.year, now.month, now.day)),
+      );
     }
     await _syncAfterSave(t.id);
     if (mounted) Navigator.of(context).pop();
