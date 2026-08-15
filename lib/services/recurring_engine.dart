@@ -54,10 +54,51 @@ class RecurringEngine {
     for (final start in occurrences) {
       final exists = await _instanceExists(template.id, start);
       if (exists) continue;
-      await db.into(db.tasks).insert(_instanceOf(template, start));
+      final occId = _newId();
+      await db.into(db.tasks).insert(_instanceOf(template, start, id: occId));
+      // Each occurrence gets its own copy of the series' agenda (the steps that
+      // run it), offset to this date — so a repeating meeting carries its
+      // agenda, but not the follow-ups (those belong to one occurrence). §4.
+      await _copyAgenda(template, occId, start);
       inserted++;
     }
     return inserted;
+  }
+
+  /// Clone the template's agenda children onto a freshly-materialised
+  /// occurrence, shifting each step's time by the gap between the template's
+  /// start and this occurrence's start. Only agenda travels (§4).
+  Future<void> _copyAgenda(
+    Task template,
+    String occId,
+    DateTime occStart,
+  ) async {
+    final agenda = await db.taskDao.agendaForEvent(template.id);
+    if (agenda.isEmpty) return;
+    final delta = occStart.difference(template.scheduledStart!);
+    final now = DateTime.now();
+    for (final a in agenda) {
+      final start = a.scheduledStart?.add(delta);
+      await db.into(db.tasks).insert(
+        TasksCompanion.insert(
+          id: _newId(),
+          title: a.title,
+          kind: Value(a.kind ?? TaskKind.task),
+          notes: Value(a.notes),
+          areaId: Value(a.areaId),
+          parentEventId: Value(occId),
+          parentRelation: const Value(ParentRelation.agenda),
+          scheduledStart: Value(start),
+          dueDate: Value(start),
+          durationMin: Value(a.durationMin),
+          status: const Value(TaskStatus.created),
+          publicationState: Value(template.publicationState),
+          source: Value(a.source),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+    }
   }
 
   /// Pure RRULE expansion. Exposed for unit tests. Returns local DateTimes.
@@ -112,10 +153,10 @@ class RecurringEngine {
     return rows.isNotEmpty;
   }
 
-  TasksCompanion _instanceOf(Task template, DateTime start) {
+  TasksCompanion _instanceOf(Task template, DateTime start, {String? id}) {
     final now = DateTime.now();
     return TasksCompanion.insert(
-      id: _newId(),
+      id: id ?? _newId(),
       title: template.title,
       notes: Value(template.notes),
       areaId: Value(template.areaId),

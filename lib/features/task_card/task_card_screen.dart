@@ -36,6 +36,9 @@ import '../google/drive_picker_screen.dart';
 ///
 /// [initialInput] lets share-target text (§11) or voice transcripts (§19) drop
 /// straight into the same card.
+/// Attached content that a "Save As" copy can carry over (§4).
+enum _Carry { agenda, followUps, captures, review }
+
 class TaskCardScreen extends ConsumerStatefulWidget {
   const TaskCardScreen({
     super.key,
@@ -44,8 +47,14 @@ class TaskCardScreen extends ConsumerStatefulWidget {
     this.imagePath,
     this.autoExtract = false,
     this.editing,
+    this.saveAsCopy = false,
     this.startWithMeet = false,
   });
+
+  /// "Save As" mode: prefill from [editing] but **create a new** task/event on
+  /// save, leaving the original untouched. The user edits/keeps/removes fields
+  /// in the form and chooses which attached content to carry over (§4).
+  final bool saveAsCopy;
 
   /// Opens the card as a Google Meet event: kind = event, Meet link armed, so
   /// "New Google Meet event" lands the user one step from Save (§9).
@@ -78,6 +87,12 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
   final _notesController = TextEditingController();
   final _docLinkController = TextEditingController();
   String? _pickedImagePath; // phone image attached in-card (vs OCR image)
+
+  // Save As: which attached content to carry into the copy. Everything starts
+  // on — the user removes what they don't want (§4).
+  final Set<_Carry> _carry = {..._Carry.values};
+  int _agendaCount = 0, _followUpCount = 0, _captureCount = 0;
+  bool _hasReview = false;
 
   /// Manual repeat presets (§4/§6 RRULE). Parser-detected repeats also land in
   /// [_rrule] and highlight the matching chip.
@@ -236,6 +251,7 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     if (widget.editing != null) {
       _prefillFromTask(widget.editing!);
       _loadSeriesRruleIfOccurrence(widget.editing!);
+      if (widget.saveAsCopy) _loadCarrySource(widget.editing!);
     }
     if (widget.startWithMeet) _generateMeet = true;
     final input = widget.initialInput;
@@ -298,6 +314,117 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     final tmpl = await ref.read(taskDaoProvider).findById(parent);
     if (mounted && (tmpl?.rrule ?? '').isNotEmpty) {
       setState(() => _loadRrule(tmpl!.rrule));
+    }
+  }
+
+  /// Count the source's attached content so the "Carry over" toggles show what
+  /// there is to keep (§4). Only items that exist are offered.
+  Future<void> _loadCarrySource(Task src) async {
+    final dao = ref.read(taskDaoProvider);
+    final agenda = await dao.agendaForEvent(src.id);
+    final followUps = await dao.followUpsForEvent(src.id);
+    final captures = await ref.read(capturesForTaskProvider(src.id).future);
+    if (!mounted) return;
+    setState(() {
+      _agendaCount = agenda.length;
+      _followUpCount = followUps.length;
+      _captureCount = captures.length;
+      _hasReview = (src.reviewNotes ?? '').trim().isNotEmpty;
+    });
+  }
+
+  bool get _hasCarry =>
+      _agendaCount > 0 ||
+      _followUpCount > 0 ||
+      _captureCount > 0 ||
+      _hasReview;
+
+  Widget _carryChip(_Carry c, String label) => FilterChip(
+    label: Text(label),
+    selected: _carry.contains(c),
+    onSelected: (v) => setState(() => v ? _carry.add(c) : _carry.remove(c)),
+  );
+
+  /// Copy the ticked attached content from [src] onto the new copy [newId].
+  /// Agenda shifts by the gap between the source's start and the copy's start;
+  /// follow-ups keep their own dates; captures share the same media file (§4).
+  Future<void> _copyAttachments(Task src, String newId, DateTime? newStart) async {
+    final dao = ref.read(taskDaoProvider);
+    final db = ref.read(appDatabaseProvider);
+    final uuid = ref.read(uuidProvider);
+    final now = DateTime.now();
+    final delta = (newStart != null && src.scheduledStart != null)
+        ? newStart.difference(src.scheduledStart!)
+        : Duration.zero;
+
+    if (_carry.contains(_Carry.agenda)) {
+      for (final a in await dao.agendaForEvent(src.id)) {
+        final s = a.scheduledStart?.add(delta);
+        await dao.insertTask(
+          TasksCompanion.insert(
+            id: uuid.v4(),
+            title: a.title,
+            kind: Value(a.kind ?? TaskKind.task),
+            notes: Value(a.notes),
+            areaId: Value(a.areaId),
+            parentEventId: Value(newId),
+            parentRelation: const Value(ParentRelation.agenda),
+            scheduledStart: Value(s),
+            dueDate: Value(s),
+            durationMin: Value(a.durationMin),
+            status: const Value(TaskStatus.created),
+            source: Value(a.source),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+      }
+    }
+    if (_carry.contains(_Carry.followUps)) {
+      for (final f in await dao.followUpsForEvent(src.id)) {
+        await dao.insertTask(
+          TasksCompanion.insert(
+            id: uuid.v4(),
+            title: f.title,
+            kind: Value(f.kind ?? TaskKind.task),
+            notes: Value(f.notes),
+            areaId: Value(f.areaId),
+            parentEventId: Value(newId),
+            parentRelation: const Value(ParentRelation.followUp),
+            scheduledStart: Value(f.scheduledStart),
+            dueDate: Value(f.dueDate),
+            durationMin: Value(f.durationMin),
+            locationName: Value(f.locationName),
+            meetingLink: Value(f.meetingLink),
+            status: const Value(TaskStatus.created),
+            source: Value(f.source),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+      }
+    }
+    if (_carry.contains(_Carry.captures)) {
+      for (final c in await ref.read(capturesForTaskProvider(src.id).future)) {
+        await db
+            .into(db.captures)
+            .insert(
+              CapturesCompanion.insert(
+                id: uuid.v4(),
+                type: c.type,
+                attachedType: c.attachedType,
+                attachedId: newId,
+                mediaPath: Value(c.mediaPath),
+                textContent: Value(c.textContent),
+                caption: Value(c.caption),
+                durationSec: Value(c.durationSec),
+                sizeBytes: Value(c.sizeBytes),
+                thumbnailPath: Value(c.thumbnailPath),
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+      }
     }
   }
 
@@ -364,7 +491,13 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.editing != null ? 'Edit task' : 'New task'),
+        title: Text(
+          widget.saveAsCopy
+              ? 'Save a copy'
+              : widget.editing != null
+              ? 'Edit task'
+              : 'New task',
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
@@ -847,6 +980,33 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
               ),
             ),
           ),
+          if (widget.saveAsCopy && _hasCarry) ...[
+            _FieldLabel('Carry over', false),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  if (_agendaCount > 0)
+                    _carryChip(_Carry.agenda, 'Agenda ($_agendaCount)'),
+                  if (_followUpCount > 0)
+                    _carryChip(_Carry.followUps, 'Follow-ups ($_followUpCount)'),
+                  if (_captureCount > 0)
+                    _carryChip(_Carry.captures, 'Captures ($_captureCount)'),
+                  if (_hasReview) _carryChip(_Carry.review, 'Review notes'),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(8, 6, 8, 8),
+              child: Text(
+                'Everything is kept by default — untick to leave it out. The '
+                'original stays exactly as it is.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
           if (draft != null && draft.needsReview)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
@@ -867,12 +1027,20 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
           children: [
             FilledButton(
               onPressed: () => _save(release: true),
-              child: Text(_alreadyReleased ? 'Save' : 'Release'),
+              child: Text(
+                widget.saveAsCopy
+                    ? 'Create copy'
+                    : _alreadyReleased
+                    ? 'Save'
+                    : 'Release',
+              ),
             ),
             if (!_alreadyReleased)
               TextButton(
                 onPressed: () => _save(release: false),
-                child: const Text('Save as draft'),
+                child: Text(
+                  widget.saveAsCopy ? 'Create as draft' : 'Save as draft',
+                ),
               ),
           ],
         ),
@@ -1796,7 +1964,10 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
     final startVal = dueOnly ? null : anchor;
     final dueVal = anchor;
 
-    if (widget.editing != null) {
+    // Save As prefills from an existing item but *creates a new one* — so it
+    // skips the update path and falls through to insert, leaving the source
+    // untouched.
+    if (widget.editing != null && !widget.saveAsCopy) {
       // Releasing a draft you saved earlier — the commitment is made here, so
       // it is recorded here.
       if (release && !_alreadyReleased) {
@@ -1847,6 +2018,12 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       geofenceEnabled: Value(_geofence),
       lat: Value(_lat),
       lng: Value(_lng),
+      // Save As can carry the source's review note over (it's not a form field).
+      reviewNotes: Value(
+        widget.saveAsCopy && _carry.contains(_Carry.review)
+            ? widget.editing?.reviewNotes
+            : null,
+      ),
       source: Value(_draft?.source ?? TaskSource.manual),
       createdAt: now,
       updatedAt: now,
@@ -1861,6 +2038,13 @@ class _TaskCardScreenState extends ConsumerState<TaskCardScreen> {
       if (release) await service.release(saved);
     }
     await _applyGeofence(id);
+
+    // Save As: carry the ticked attached content onto the new copy — before
+    // materialising a recurring copy, so its agenda is in place for every
+    // occurrence to inherit (§4).
+    if (widget.saveAsCopy && widget.editing != null) {
+      await _copyAttachments(widget.editing!, id, startVal);
+    }
 
     // Persist chosen participants as on-device contact refs (§3.3, §11).
     final dao = ref.read(taskDaoProvider);

@@ -21,7 +21,6 @@ import '../capture/review_items_screen.dart';
 import '../captures/captures_section.dart';
 import '../reports/event_report_screen.dart';
 import '../share/invite_card_screen.dart';
-import 'duplicate_event.dart';
 import '../common/sense_animation.dart';
 import '../task_card/task_card_screen.dart';
 
@@ -49,7 +48,7 @@ class TaskDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Task'),
         actions: [
-          if (editable != null && editable.kind == TaskKind.event) ...[
+          if (editable != null && editable.kind == TaskKind.event)
             IconButton(
               icon: const Icon(Icons.summarize_outlined),
               tooltip: 'Event report',
@@ -59,12 +58,19 @@ class TaskDetailScreen extends ConsumerWidget {
                 ),
               ),
             ),
+          // Save As — available in any state (it never touches the original),
+          // so "run that training again" works even on a completed event (§4).
+          if (editable != null)
             IconButton(
               icon: const Icon(Icons.copy_all_outlined),
-              tooltip: 'Duplicate to another date',
-              onPressed: () => _duplicate(context, ref, editable),
+              tooltip: 'Save a copy',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      TaskCardScreen(editing: editable, saveAsCopy: true),
+                ),
+              ),
             ),
-          ],
           if (editable != null && _openStatuses.contains(editable.status))
             IconButton(
               icon: const Icon(Icons.edit_outlined),
@@ -501,60 +507,6 @@ class TaskDetailScreen extends ConsumerWidget {
     navigator.pop();
   }
 
-  /// §4 clone this event onto another date, carrying its agenda. Every action
-  /// item shifts by the same offset, so a 6–11 PM run-of-show lands intact.
-  Future<void> _duplicate(
-    BuildContext context,
-    WidgetRef ref,
-    Task event,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final now = DateTime.now();
-    final oldStart = event.scheduledStart ?? event.dueDate ?? now;
-
-    final date = await showDatePicker(
-      context: context,
-      initialDate: oldStart.add(const Duration(days: 7)),
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 2)),
-      helpText: 'Duplicate to which date?',
-    );
-    if (date == null || !context.mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(oldStart),
-      helpText: 'Start time',
-    );
-    if (!context.mounted) return;
-
-    final newStart = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time?.hour ?? oldStart.hour,
-      time?.minute ?? oldStart.minute,
-    );
-    try {
-      final copied = await duplicateEventToDate(
-        ref,
-        event: event,
-        newStart: newStart,
-      );
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Duplicated to ${DateFormat('EEE, MMM d').format(newStart)}'
-            '${copied == 0 ? '' : ' with $copied action item'
-                      '${copied == 1 ? '' : 's'}'}',
-          ),
-        ),
-      );
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not duplicate: $e')),
-      );
-    }
-  }
 
   Widget _actions(BuildContext context, WidgetRef ref, Task task) {
     final service = ref.read(taskServiceProvider);
