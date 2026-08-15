@@ -17,6 +17,7 @@ import '../../services/feedback_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/update_checker.dart';
 import '../coach/coach_screen.dart';
+import '../help/faq_screen.dart';
 import '../google/google_sync_screen.dart';
 import '../import/import_screen.dart';
 import '../listeners/listeners_screen.dart';
@@ -368,6 +369,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               context,
             ).push(MaterialPageRoute(builder: (_) => const CoachScreen())),
           ),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Help & FAQ'),
+            subtitle: const Text('Features, sync, sharing, privacy & security'),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const FaqScreen())),
+          ),
           // Cross-platform pointer: on mobile, tell users the Windows desktop
           // app exists and give them a link to pull it (or share it to their
           // PC). Hidden on desktop — you're already on it.
@@ -398,10 +407,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             onTap: _sendFeedback,
           ),
-          const ListTile(
-            leading: Icon(Icons.shield_outlined),
-            title: Text('Privacy'),
-            subtitle: Text('Local-first · zero data collection · no telemetry'),
+          ListTile(
+            leading: const Icon(Icons.shield_outlined),
+            title: const Text('Privacy'),
+            subtitle: const Text(
+              'Local-first · zero data collection · no telemetry',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const FaqScreen()),
+            ),
           ),
           const SizedBox(height: 24),
         ],

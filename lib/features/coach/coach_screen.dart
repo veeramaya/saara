@@ -85,6 +85,32 @@ const _cards = <_Card>[
     'Plans change; keeping your word means adjusting honestly, not silently dropping.',
   ),
   _Card(
+    'Open & close your day',
+    'A daily integrity practice.',
+    'Morning: declare your word for the day. Evening: honor what you kept, '
+        'restore what you didn’t in a line of your own, and close. It’s as '
+        'simple as brushing your teeth — and it becomes a shareable Day Card.',
+    'Example',
+    'Morning → “give your word for today.” Evening → mark what you honored, '
+        'add a line of restoration, and flip it into a card with two faces: '
+        'the open and the close.',
+    'The ritual is where intention meets honest reflection.',
+    isNew: true,
+  ),
+  _Card(
+    'Share your word',
+    'Cards your listeners can open anywhere.',
+    'Send any task or event as an invitation (before) or a report (after) — '
+        'you pick exactly which fields travel. Gather many into a share book '
+        'that opens in any browser, offline, with no app to install.',
+    'Example',
+    'A completed event → “Send as report” → tick the fields → share the card. '
+        'Or export a week’s book as a web page for a listener who isn’t on '
+        'Saara. Only what you tick is shared — notes and scores stay off.',
+    'A word kept is meant to land with someone — sharing is how it lands.',
+    isNew: true,
+  ),
+  _Card(
     'Measurable results',
     'Make “done” unambiguous.',
     'Attach a number to a goal so there’s no “sort of done.”',
