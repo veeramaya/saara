@@ -48,7 +48,11 @@ class TaskTile extends ConsumerWidget {
                 )
               : null,
         ),
-        subtitle: Row(
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
           children: [
             // §4.1a a draft isn't a commitment yet — it shows, but it doesn't
             // count, and that difference should be visible rather than hidden
@@ -92,6 +96,11 @@ class TaskTile extends ConsumerWidget {
                 style: TextStyle(color: scheme.primary),
               ),
             ],
+          ],
+            ),
+            // Where a meeting's child came from — visible in flat lists where the
+            // parent event isn't (§4).
+            if (task.parentEventId != null) _OriginLine(eventId: task.parentEventId!),
           ],
         ),
         trailing:
@@ -236,6 +245,32 @@ class TaskTile extends ConsumerWidget {
       date.day,
       t?.hour ?? base.hour,
       t?.minute ?? base.minute,
+    );
+  }
+}
+
+/// §4 "↳ from {event}" — a follow-up or agenda child's origin, shown in flat
+/// lists where the parent event isn't visible. Reads the event's title live, so
+/// renaming the event updates the line rather than leaving a stale copy.
+class _OriginLine extends ConsumerWidget {
+  const _OriginLine({required this.eventId});
+  final String eventId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final title = ref.watch(taskByIdProvider(eventId)).valueOrNull?.title;
+    if (title == null || title.trim().isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        '↳ from $title',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+      ),
     );
   }
 }

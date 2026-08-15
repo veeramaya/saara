@@ -1438,11 +1438,12 @@ class _EventChildrenSection extends ConsumerWidget {
       }
     }
     if (result == null || result.title.isEmpty) return;
+    final id = ref.read(uuidProvider).v4();
     await ref
         .read(taskDaoProvider)
         .insertTask(
           TasksCompanion.insert(
-            id: ref.read(uuidProvider).v4(),
+            id: id,
             title: result.title,
             kind: Value(kind),
             parentEventId: Value(event.id),
@@ -1466,6 +1467,26 @@ class _EventChildrenSection extends ConsumerWidget {
     final d = result.start;
     if (d != null) {
       ref.invalidate(tasksForDayProvider(DateTime(d.year, d.month, d.day)));
+    }
+    // Capture stays fast; the fuller edit (repeat, reminders, links) is one tap
+    // away — the moment you most need speed is when you're mid-meeting.
+    if (!_isAgenda && context.mounted) {
+      final created = await ref.read(taskDaoProvider).findById(id);
+      if (created != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Follow-up added'),
+            action: SnackBarAction(
+              label: 'Set repeat & details',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TaskCardScreen(editing: created),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
     }
   }
 
