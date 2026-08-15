@@ -51,7 +51,7 @@ class _AgendaRunScreenState extends ConsumerState<AgendaRunScreen> {
   Future<void> _load() async {
     final all = await ref
         .read(taskDaoProvider)
-        .childTasksForEvent(widget.eventId);
+        .agendaForEvent(widget.eventId);
     all.sort((a, b) {
       final sa = a.scheduledStart, sb = b.scheduledStart;
       if (sa == null && sb == null) return a.createdAt.compareTo(b.createdAt);
@@ -93,7 +93,7 @@ class _AgendaRunScreenState extends ConsumerState<AgendaRunScreen> {
   }
 
   void _refreshLists() {
-    ref.invalidate(childTasksForEventProvider(widget.eventId));
+    ref.invalidate(agendaForEventProvider(widget.eventId));
     ref.invalidate(childTaskCountsProvider);
     ref.invalidate(allTasksProvider);
     ref.invalidate(unscheduledTasksProvider);

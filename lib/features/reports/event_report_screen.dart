@@ -53,7 +53,7 @@ class _EventReportScreenState extends ConsumerState<EventReportScreen> {
   @override
   Widget build(BuildContext context) {
     final eventAsync = ref.watch(taskByIdProvider(widget.eventId));
-    final itemsAsync = ref.watch(childTasksForEventProvider(widget.eventId));
+    final itemsAsync = ref.watch(agendaForEventProvider(widget.eventId));
     // Load the event's captures so the report lists them (§3.4).
     ref.watch(capturesForTaskProvider(widget.eventId));
 

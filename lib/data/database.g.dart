@@ -2221,6 +2221,15 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<ParentRelation?, String>
+  parentRelation = GeneratedColumn<String>(
+    'parent_relation',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<ParentRelation?>($TasksTable.$converterparentRelationn);
   static const VerificationMeta _reviewNotesMeta = const VerificationMeta(
     'reviewNotes',
   );
@@ -2424,6 +2433,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     parentRecurringId,
     occurrenceSlot,
     parentEventId,
+    parentRelation,
     reviewNotes,
     meetingLink,
     meetingProvider,
@@ -2768,6 +2778,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.string,
         data['${effectivePrefix}parent_event_id'],
       ),
+      parentRelation: $TasksTable.$converterparentRelationn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}parent_relation'],
+        ),
+      ),
       reviewNotes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}review_notes'],
@@ -2860,6 +2876,14 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
   $converterpublicationState = const EnumNameConverter<PublicationState>(
     PublicationState.values,
   );
+  static JsonTypeConverter2<ParentRelation, String, String>
+  $converterparentRelation = const EnumNameConverter<ParentRelation>(
+    ParentRelation.values,
+  );
+  static JsonTypeConverter2<ParentRelation?, String?, String?>
+  $converterparentRelationn = JsonTypeConverter2.asNullable(
+    $converterparentRelation,
+  );
   static JsonTypeConverter2<MeetingProvider, String, String>
   $convertermeetingProvider = const EnumNameConverter<MeetingProvider>(
     MeetingProvider.values,
@@ -2919,6 +2943,7 @@ class Task extends DataClass implements Insertable<Task> {
   /// helpfully re-created it — a ghost at the old time (§4).
   final DateTime? occurrenceSlot;
   final String? parentEventId;
+  final ParentRelation? parentRelation;
   final String? reviewNotes;
   final String? meetingLink;
   final MeetingProvider? meetingProvider;
@@ -2955,6 +2980,7 @@ class Task extends DataClass implements Insertable<Task> {
     this.parentRecurringId,
     this.occurrenceSlot,
     this.parentEventId,
+    this.parentRelation,
     this.reviewNotes,
     this.meetingLink,
     this.meetingProvider,
@@ -3029,6 +3055,11 @@ class Task extends DataClass implements Insertable<Task> {
     }
     if (!nullToAbsent || parentEventId != null) {
       map['parent_event_id'] = Variable<String>(parentEventId);
+    }
+    if (!nullToAbsent || parentRelation != null) {
+      map['parent_relation'] = Variable<String>(
+        $TasksTable.$converterparentRelationn.toSql(parentRelation),
+      );
     }
     if (!nullToAbsent || reviewNotes != null) {
       map['review_notes'] = Variable<String>(reviewNotes);
@@ -3128,6 +3159,9 @@ class Task extends DataClass implements Insertable<Task> {
       parentEventId: parentEventId == null && nullToAbsent
           ? const Value.absent()
           : Value(parentEventId),
+      parentRelation: parentRelation == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentRelation),
       reviewNotes: reviewNotes == null && nullToAbsent
           ? const Value.absent()
           : Value(reviewNotes),
@@ -3202,6 +3236,9 @@ class Task extends DataClass implements Insertable<Task> {
       ),
       occurrenceSlot: serializer.fromJson<DateTime?>(json['occurrenceSlot']),
       parentEventId: serializer.fromJson<String?>(json['parentEventId']),
+      parentRelation: $TasksTable.$converterparentRelationn.fromJson(
+        serializer.fromJson<String?>(json['parentRelation']),
+      ),
       reviewNotes: serializer.fromJson<String?>(json['reviewNotes']),
       meetingLink: serializer.fromJson<String?>(json['meetingLink']),
       meetingProvider: $TasksTable.$convertermeetingProvidern.fromJson(
@@ -3253,6 +3290,9 @@ class Task extends DataClass implements Insertable<Task> {
       'parentRecurringId': serializer.toJson<String?>(parentRecurringId),
       'occurrenceSlot': serializer.toJson<DateTime?>(occurrenceSlot),
       'parentEventId': serializer.toJson<String?>(parentEventId),
+      'parentRelation': serializer.toJson<String?>(
+        $TasksTable.$converterparentRelationn.toJson(parentRelation),
+      ),
       'reviewNotes': serializer.toJson<String?>(reviewNotes),
       'meetingLink': serializer.toJson<String?>(meetingLink),
       'meetingProvider': serializer.toJson<String?>(
@@ -3296,6 +3336,7 @@ class Task extends DataClass implements Insertable<Task> {
     Value<String?> parentRecurringId = const Value.absent(),
     Value<DateTime?> occurrenceSlot = const Value.absent(),
     Value<String?> parentEventId = const Value.absent(),
+    Value<ParentRelation?> parentRelation = const Value.absent(),
     Value<String?> reviewNotes = const Value.absent(),
     Value<String?> meetingLink = const Value.absent(),
     Value<MeetingProvider?> meetingProvider = const Value.absent(),
@@ -3344,6 +3385,9 @@ class Task extends DataClass implements Insertable<Task> {
     parentEventId: parentEventId.present
         ? parentEventId.value
         : this.parentEventId,
+    parentRelation: parentRelation.present
+        ? parentRelation.value
+        : this.parentRelation,
     reviewNotes: reviewNotes.present ? reviewNotes.value : this.reviewNotes,
     meetingLink: meetingLink.present ? meetingLink.value : this.meetingLink,
     meetingProvider: meetingProvider.present
@@ -3408,6 +3452,9 @@ class Task extends DataClass implements Insertable<Task> {
       parentEventId: data.parentEventId.present
           ? data.parentEventId.value
           : this.parentEventId,
+      parentRelation: data.parentRelation.present
+          ? data.parentRelation.value
+          : this.parentRelation,
       reviewNotes: data.reviewNotes.present
           ? data.reviewNotes.value
           : this.reviewNotes,
@@ -3467,6 +3514,7 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('parentRecurringId: $parentRecurringId, ')
           ..write('occurrenceSlot: $occurrenceSlot, ')
           ..write('parentEventId: $parentEventId, ')
+          ..write('parentRelation: $parentRelation, ')
           ..write('reviewNotes: $reviewNotes, ')
           ..write('meetingLink: $meetingLink, ')
           ..write('meetingProvider: $meetingProvider, ')
@@ -3508,6 +3556,7 @@ class Task extends DataClass implements Insertable<Task> {
     parentRecurringId,
     occurrenceSlot,
     parentEventId,
+    parentRelation,
     reviewNotes,
     meetingLink,
     meetingProvider,
@@ -3548,6 +3597,7 @@ class Task extends DataClass implements Insertable<Task> {
           other.parentRecurringId == this.parentRecurringId &&
           other.occurrenceSlot == this.occurrenceSlot &&
           other.parentEventId == this.parentEventId &&
+          other.parentRelation == this.parentRelation &&
           other.reviewNotes == this.reviewNotes &&
           other.meetingLink == this.meetingLink &&
           other.meetingProvider == this.meetingProvider &&
@@ -3586,6 +3636,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<String?> parentRecurringId;
   final Value<DateTime?> occurrenceSlot;
   final Value<String?> parentEventId;
+  final Value<ParentRelation?> parentRelation;
   final Value<String?> reviewNotes;
   final Value<String?> meetingLink;
   final Value<MeetingProvider?> meetingProvider;
@@ -3623,6 +3674,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.parentRecurringId = const Value.absent(),
     this.occurrenceSlot = const Value.absent(),
     this.parentEventId = const Value.absent(),
+    this.parentRelation = const Value.absent(),
     this.reviewNotes = const Value.absent(),
     this.meetingLink = const Value.absent(),
     this.meetingProvider = const Value.absent(),
@@ -3661,6 +3713,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.parentRecurringId = const Value.absent(),
     this.occurrenceSlot = const Value.absent(),
     this.parentEventId = const Value.absent(),
+    this.parentRelation = const Value.absent(),
     this.reviewNotes = const Value.absent(),
     this.meetingLink = const Value.absent(),
     this.meetingProvider = const Value.absent(),
@@ -3702,6 +3755,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<String>? parentRecurringId,
     Expression<DateTime>? occurrenceSlot,
     Expression<String>? parentEventId,
+    Expression<String>? parentRelation,
     Expression<String>? reviewNotes,
     Expression<String>? meetingLink,
     Expression<String>? meetingProvider,
@@ -3741,6 +3795,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (parentRecurringId != null) 'parent_recurring_id': parentRecurringId,
       if (occurrenceSlot != null) 'occurrence_slot': occurrenceSlot,
       if (parentEventId != null) 'parent_event_id': parentEventId,
+      if (parentRelation != null) 'parent_relation': parentRelation,
       if (reviewNotes != null) 'review_notes': reviewNotes,
       if (meetingLink != null) 'meeting_link': meetingLink,
       if (meetingProvider != null) 'meeting_provider': meetingProvider,
@@ -3781,6 +3836,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<String?>? parentRecurringId,
     Value<DateTime?>? occurrenceSlot,
     Value<String?>? parentEventId,
+    Value<ParentRelation?>? parentRelation,
     Value<String?>? reviewNotes,
     Value<String?>? meetingLink,
     Value<MeetingProvider?>? meetingProvider,
@@ -3819,6 +3875,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       parentRecurringId: parentRecurringId ?? this.parentRecurringId,
       occurrenceSlot: occurrenceSlot ?? this.occurrenceSlot,
       parentEventId: parentEventId ?? this.parentEventId,
+      parentRelation: parentRelation ?? this.parentRelation,
       reviewNotes: reviewNotes ?? this.reviewNotes,
       meetingLink: meetingLink ?? this.meetingLink,
       meetingProvider: meetingProvider ?? this.meetingProvider,
@@ -3905,6 +3962,11 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (parentEventId.present) {
       map['parent_event_id'] = Variable<String>(parentEventId.value);
     }
+    if (parentRelation.present) {
+      map['parent_relation'] = Variable<String>(
+        $TasksTable.$converterparentRelationn.toSql(parentRelation.value),
+      );
+    }
     if (reviewNotes.present) {
       map['review_notes'] = Variable<String>(reviewNotes.value);
     }
@@ -3989,6 +4051,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('parentRecurringId: $parentRecurringId, ')
           ..write('occurrenceSlot: $occurrenceSlot, ')
           ..write('parentEventId: $parentEventId, ')
+          ..write('parentRelation: $parentRelation, ')
           ..write('reviewNotes: $reviewNotes, ')
           ..write('meetingLink: $meetingLink, ')
           ..write('meetingProvider: $meetingProvider, ')
@@ -10358,6 +10421,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<String?> parentRecurringId,
       Value<DateTime?> occurrenceSlot,
       Value<String?> parentEventId,
+      Value<ParentRelation?> parentRelation,
       Value<String?> reviewNotes,
       Value<String?> meetingLink,
       Value<MeetingProvider?> meetingProvider,
@@ -10397,6 +10461,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<String?> parentRecurringId,
       Value<DateTime?> occurrenceSlot,
       Value<String?> parentEventId,
+      Value<ParentRelation?> parentRelation,
       Value<String?> reviewNotes,
       Value<String?> meetingLink,
       Value<MeetingProvider?> meetingProvider,
@@ -10573,6 +10638,12 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
   ColumnFilters<String> get parentEventId => $composableBuilder(
     column: $table.parentEventId,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ParentRelation?, ParentRelation, String>
+  get parentRelation => $composableBuilder(
+    column: $table.parentRelation,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<String> get reviewNotes => $composableBuilder(
@@ -10831,6 +10902,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get parentRelation => $composableBuilder(
+    column: $table.parentRelation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get reviewNotes => $composableBuilder(
     column: $table.reviewNotes,
     builder: (column) => ColumnOrderings(column),
@@ -11018,6 +11094,12 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<String> get parentEventId => $composableBuilder(
     column: $table.parentEventId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<ParentRelation?, String>
+  get parentRelation => $composableBuilder(
+    column: $table.parentRelation,
     builder: (column) => column,
   );
 
@@ -11216,6 +11298,7 @@ class $$TasksTableTableManager
                 Value<String?> parentRecurringId = const Value.absent(),
                 Value<DateTime?> occurrenceSlot = const Value.absent(),
                 Value<String?> parentEventId = const Value.absent(),
+                Value<ParentRelation?> parentRelation = const Value.absent(),
                 Value<String?> reviewNotes = const Value.absent(),
                 Value<String?> meetingLink = const Value.absent(),
                 Value<MeetingProvider?> meetingProvider = const Value.absent(),
@@ -11253,6 +11336,7 @@ class $$TasksTableTableManager
                 parentRecurringId: parentRecurringId,
                 occurrenceSlot: occurrenceSlot,
                 parentEventId: parentEventId,
+                parentRelation: parentRelation,
                 reviewNotes: reviewNotes,
                 meetingLink: meetingLink,
                 meetingProvider: meetingProvider,
@@ -11292,6 +11376,7 @@ class $$TasksTableTableManager
                 Value<String?> parentRecurringId = const Value.absent(),
                 Value<DateTime?> occurrenceSlot = const Value.absent(),
                 Value<String?> parentEventId = const Value.absent(),
+                Value<ParentRelation?> parentRelation = const Value.absent(),
                 Value<String?> reviewNotes = const Value.absent(),
                 Value<String?> meetingLink = const Value.absent(),
                 Value<MeetingProvider?> meetingProvider = const Value.absent(),
@@ -11329,6 +11414,7 @@ class $$TasksTableTableManager
                 parentRecurringId: parentRecurringId,
                 occurrenceSlot: occurrenceSlot,
                 parentEventId: parentEventId,
+                parentRelation: parentRelation,
                 reviewNotes: reviewNotes,
                 meetingLink: meetingLink,
                 meetingProvider: meetingProvider,

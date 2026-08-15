@@ -285,6 +285,23 @@ final childTasksForEventProvider = FutureProvider.family<List<Task>, String>((
   return ref.watch(taskDaoProvider).childTasksForEvent(eventId);
 });
 
+/// An event's **agenda** — the segments that run it (§4). Backs the Agenda
+/// section and the hands-free agenda run.
+final agendaForEventProvider = FutureProvider.family<List<Task>, String>((
+  ref,
+  eventId,
+) {
+  return ref.watch(taskDaoProvider).agendaForEvent(eventId);
+});
+
+/// An event's **follow-ups** — tasks/events that came out of it (§4).
+final followUpsForEventProvider = FutureProvider.family<List<Task>, String>((
+  ref,
+  eventId,
+) {
+  return ref.watch(taskDaoProvider).followUpsForEvent(eventId);
+});
+
 /// Count of action items per event (§4) — parentEventId → count. Powers the
 /// "N action items" badge on event tiles in the Today and Tasks lists.
 final childTaskCountsProvider = FutureProvider<Map<String, int>>((ref) async {

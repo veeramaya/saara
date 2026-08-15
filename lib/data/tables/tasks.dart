@@ -71,6 +71,11 @@ class Tasks extends Table {
   // backbone — a child usually inherits its event's area but may override it.
   TextColumn get parentEventId => text().nullable()();
 
+  // §4 how a child relates to its parent event: an `agenda` segment (carries to
+  // every repeat/duplicate) or a `followUp` (belongs to this occurrence only).
+  // NULL for standalone tasks and legacy children (treated as agenda).
+  TextColumn get parentRelation => textEnum<ParentRelation>().nullable()();
+
   // §7 private retrospective for an event ("how did the session go"). Kept
   // separate from `notes` because notes is the Calendar *description* and syncs
   // to Google — a review is written afterwards and stays on-device.

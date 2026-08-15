@@ -68,6 +68,7 @@ class ReviewItemsScreen extends ConsumerStatefulWidget {
     super.key,
     required this.imagePath,
     this.parentEventId,
+    this.parentRelation,
     this.fallbackAreaId,
   });
   final String imagePath;
@@ -75,6 +76,10 @@ class ReviewItemsScreen extends ConsumerStatefulWidget {
   /// When set, every created item is hung under this event (§4) and defaults to
   /// [fallbackAreaId] (the event's area) when the AI didn't name an area.
   final String? parentEventId;
+
+  /// How the created items relate to the parent event — agenda or follow-up.
+  /// Defaults to follow-up (extracting notes is usually the post-event pass).
+  final ParentRelation? parentRelation;
   final String? fallbackAreaId;
 
   @override
@@ -250,6 +255,11 @@ class _ReviewItemsScreenState extends ConsumerState<ReviewItemsScreen> {
               documentLink: Value(doc),
               areaId: Value(areaId),
               parentEventId: Value(widget.parentEventId),
+              parentRelation: Value(
+                widget.parentEventId == null
+                    ? null
+                    : (widget.parentRelation ?? ParentRelation.followUp),
+              ),
               notes: Value(it.notes.isEmpty ? null : it.notes),
               attachmentImagePath: Value(widget.imagePath),
               source: const Value(TaskSource.conversation),

@@ -166,7 +166,15 @@ class TaskDetailScreen extends ConsumerWidget {
               _Participants(taskId: taskId),
               if (task.kind == TaskKind.event) ...[
                 const SizedBox(height: 16),
-                _ActionItemsSection(event: task),
+                _EventChildrenSection(
+                  event: task,
+                  relation: ParentRelation.agenda,
+                ),
+                const SizedBox(height: 16),
+                _EventChildrenSection(
+                  event: task,
+                  relation: ParentRelation.followUp,
+                ),
               ],
               if (task.meetingLink != null) ...[
                 const SizedBox(height: 12),
@@ -1229,9 +1237,165 @@ class _AddActionItemDialogState extends State<_AddActionItemDialog> {
   }
 }
 
-class _ActionItemsSection extends ConsumerWidget {
-  const _ActionItemsSection({required this.event});
+/// Result of the follow-up dialog: a task or an event, with its own when.
+typedef _NewFollowUp = ({
+  TaskKind kind,
+  String title,
+  DateTime? start,
+  int? durationMin,
+});
+
+/// Dialog to add a **follow-up** — a task (its own due date/time) or a
+/// follow-up meeting (its own start) that came out of this event (§4).
+class _AddFollowUpDialog extends StatefulWidget {
+  const _AddFollowUpDialog({required this.initialStart});
+  final DateTime initialStart;
+
+  @override
+  State<_AddFollowUpDialog> createState() => _AddFollowUpDialogState();
+}
+
+class _AddFollowUpDialogState extends State<_AddFollowUpDialog> {
+  final _title = TextEditingController();
+  final _duration = TextEditingController();
+  TaskKind _kind = TaskKind.task;
+  DateTime? _when;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _duration.dispose();
+    super.dispose();
+  }
+
+  int? get _dur {
+    final d = int.tryParse(_duration.text.trim());
+    return (d != null && d > 0) ? d : null;
+  }
+
+  Future<void> _pickWhen() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _when ?? widget.initialStart,
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365 * 3)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_when ?? widget.initialStart),
+    );
+    // A follow-up task with no time is a deadline → default end-of-day; a
+    // follow-up meeting keeps a real start time (§ date semantics).
+    final h = time?.hour ?? (_kind == TaskKind.task ? 23 : 9);
+    final m = time?.minute ?? (_kind == TaskKind.task ? 59 : 0);
+    setState(() => _when = DateTime(date.year, date.month, date.day, h, m));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('EEE d MMM, h:mm a');
+    final isEvent = _kind == TaskKind.event;
+    return AlertDialog(
+      title: const Text('Add follow-up'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SegmentedButton<TaskKind>(
+            segments: const [
+              ButtonSegment(
+                value: TaskKind.task,
+                icon: Icon(Icons.check_circle_outline, size: 18),
+                label: Text('Task'),
+              ),
+              ButtonSegment(
+                value: TaskKind.event,
+                icon: Icon(Icons.event, size: 18),
+                label: Text('Meeting'),
+              ),
+            ],
+            selected: {_kind},
+            onSelectionChanged: (s) => setState(() => _kind = s.first),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _title,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: isEvent
+                  ? 'e.g. Review meeting'
+                  : 'e.g. Send the deck to the team',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.event, size: 18),
+                  label: Text(
+                    _when == null
+                        ? (isEvent ? 'Pick date & time' : 'Pick due date')
+                        : fmt.format(_when!),
+                  ),
+                  onPressed: _pickWhen,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 84,
+                child: TextField(
+                  controller: _duration,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Min',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final t = _title.text.trim();
+            if (t.isEmpty) return;
+            // A meeting needs a start; default to the parent event's time if
+            // the user didn't pick one. A task may stay date-less (checklist).
+            final when = _when ?? (isEvent ? widget.initialStart : null);
+            Navigator.pop(context, (
+              kind: _kind,
+              title: t,
+              start: when,
+              durationMin: _dur,
+            ));
+          },
+          child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+/// §4 One of an event's two child sections. **Agenda** items run the event
+/// (segments inside its duration, carried on repeat); **follow-ups** are what
+/// came out of it (tasks or events for this occurrence only). Same widget, two
+/// clearly-headed instances.
+class _EventChildrenSection extends ConsumerWidget {
+  const _EventChildrenSection({required this.event, required this.relation});
   final Task event;
+  final ParentRelation relation;
+
+  bool get _isAgenda => relation == ParentRelation.agenda;
 
   /// Next slot's default start = the latest end among existing items, else the
   /// event's start. Lets an agenda chain back-to-back with just a duration.
@@ -1247,23 +1411,42 @@ class _ActionItemsSection extends ConsumerWidget {
   }
 
   Future<void> _add(BuildContext context, WidgetRef ref) async {
-    final items =
-        ref.read(childTasksForEventProvider(event.id)).valueOrNull ??
-        const <Task>[];
-    final result = await showDialog<_NewItem>(
-      context: context,
-      builder: (_) => _AddActionItemDialog(initialStart: _defaultStart(items)),
-    );
-    if (result == null || result.title.isEmpty) return;
     final now = DateTime.now();
+    _NewItem? result;
+    TaskKind kind = TaskKind.task;
+    if (_isAgenda) {
+      // Agenda segment: a task, start-time + duration, inside the event's day.
+      final items =
+          ref.read(agendaForEventProvider(event.id)).valueOrNull ??
+          const <Task>[];
+      result = await showDialog<_NewItem>(
+        context: context,
+        builder: (_) =>
+            _AddActionItemDialog(initialStart: _defaultStart(items)),
+      );
+    } else {
+      // Follow-up: a task OR an event, with its own date & time.
+      final res = await showDialog<_NewFollowUp>(
+        context: context,
+        builder: (_) => _AddFollowUpDialog(
+          initialStart: event.scheduledStart ?? now,
+        ),
+      );
+      if (res != null) {
+        kind = res.kind;
+        result = (title: res.title, start: res.start, durationMin: res.durationMin);
+      }
+    }
+    if (result == null || result.title.isEmpty) return;
     await ref
         .read(taskDaoProvider)
         .insertTask(
           TasksCompanion.insert(
             id: ref.read(uuidProvider).v4(),
             title: result.title,
-            kind: const Value(TaskKind.task),
+            kind: Value(kind),
             parentEventId: Value(event.id),
+            parentRelation: Value(relation),
             areaId: Value(event.areaId), // inherit the event's area for scoring
             scheduledStart: Value(result.start),
             dueDate: Value(result.start),
@@ -1274,6 +1457,8 @@ class _ActionItemsSection extends ConsumerWidget {
             updatedAt: now,
           ),
         );
+    ref.invalidate(agendaForEventProvider(event.id));
+    ref.invalidate(followUpsForEventProvider(event.id));
     ref.invalidate(childTasksForEventProvider(event.id));
     ref.invalidate(childTaskCountsProvider);
     ref.invalidate(allTasksProvider);
@@ -1325,18 +1510,25 @@ class _ActionItemsSection extends ConsumerWidget {
         builder: (_) => ReviewItemsScreen(
           imagePath: picked.path,
           parentEventId: event.id,
+          parentRelation: relation,
           fallbackAreaId: event.areaId,
         ),
       ),
     );
+    ref.invalidate(agendaForEventProvider(event.id));
+    ref.invalidate(followUpsForEventProvider(event.id));
     ref.invalidate(childTasksForEventProvider(event.id));
     ref.invalidate(childTaskCountsProvider);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(childTasksForEventProvider(event.id));
-    // Read the agenda in time order (timed items first, undated last).
+    final async = ref.watch(
+      _isAgenda
+          ? agendaForEventProvider(event.id)
+          : followUpsForEventProvider(event.id),
+    );
+    // Read in time order (timed items first, undated last).
     final items = [...(async.valueOrNull ?? const <Task>[])]
       ..sort((a, b) {
         final sa = a.scheduledStart, sb = b.scheduledStart;
@@ -1349,12 +1541,17 @@ class _ActionItemsSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Action items${items.isEmpty ? '' : ' (${items.length})'}',
+          '${_isAgenda ? 'Agenda' : 'Follow-ups'}'
+          '${items.isEmpty ? '' : ' (${items.length})'}',
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 4),
         Text(
-          'Tasks that came out of this meeting.',
+          _isAgenda
+              ? 'How you\'ll run this event — steps inside its time. '
+                    'These carry to every repeat.'
+              : 'What came out of it — tasks or follow-up meetings. '
+                    'These stay with this occurrence.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -1363,8 +1560,8 @@ class _ActionItemsSection extends ConsumerWidget {
           runSpacing: 8,
           children: [
             FilledButton.tonalIcon(
-              icon: const Icon(Icons.add_task),
-              label: const Text('Add task'),
+              icon: Icon(_isAgenda ? Icons.add_task : Icons.add),
+              label: Text(_isAgenda ? 'Add step' : 'Add follow-up'),
               onPressed: () => _add(context, ref),
             ),
             OutlinedButton.icon(
@@ -1374,12 +1571,13 @@ class _ActionItemsSection extends ConsumerWidget {
             ),
           ],
         ),
-        if (items.any(
-          (t) =>
-              t.status != TaskStatus.completed &&
-              t.status != TaskStatus.rejected &&
-              t.status != TaskStatus.cancelled,
-        )) ...[
+        if (_isAgenda &&
+            items.any(
+              (t) =>
+                  t.status != TaskStatus.completed &&
+                  t.status != TaskStatus.rejected &&
+                  t.status != TaskStatus.cancelled,
+            )) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,

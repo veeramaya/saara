@@ -159,12 +159,37 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
         .get();
   }
 
-  /// Action items hung under an event (§4) — a meeting's child tasks, oldest
-  /// first so the list reads in the order they were captured.
+  /// Every child hung under an event (§4) — agenda + follow-ups — oldest first.
   Future<List<Task>> childTasksForEvent(String eventId) {
     return (select(tasks)
           ..where((t) => t.deletedAt.isNull())
           ..where((t) => t.parentEventId.equals(eventId))
+          ..orderBy([(t) => OrderingTerm(expression: t.createdAt)]))
+        .get();
+  }
+
+  /// The event's **agenda** — segments that run it, inside its duration. Legacy
+  /// children (null relation) count as agenda. Ordered by start (§4).
+  Future<List<Task>> agendaForEvent(String eventId) {
+    return (select(tasks)
+          ..where((t) => t.deletedAt.isNull())
+          ..where((t) => t.parentEventId.equals(eventId))
+          ..where(
+            (t) =>
+                t.parentRelation.equalsValue(ParentRelation.agenda) |
+                t.parentRelation.isNull(),
+          )
+          ..orderBy([(t) => OrderingTerm(expression: t.scheduledStart)]))
+        .get();
+  }
+
+  /// The event's **follow-ups** — tasks or events that came out of it, oldest
+  /// first (§4). These belong to this occurrence and never carry on repeat.
+  Future<List<Task>> followUpsForEvent(String eventId) {
+    return (select(tasks)
+          ..where((t) => t.deletedAt.isNull())
+          ..where((t) => t.parentEventId.equals(eventId))
+          ..where((t) => t.parentRelation.equalsValue(ParentRelation.followUp))
           ..orderBy([(t) => OrderingTerm(expression: t.createdAt)]))
         .get();
   }

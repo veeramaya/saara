@@ -104,6 +104,12 @@ enum TaskSource {
 /// treated as tasks. Both are commitments; events are a different nature.
 enum TaskKind { task, event }
 
+/// §4 How a child (task or event) relates to its parent event. [agenda] items
+/// are how you *run* the event — segments inside its duration that carry to
+/// every repeat/duplicate. [followUp] items are what *came out of* it — tasks
+/// or follow-up meetings that belong to that one occurrence and never carry.
+enum ParentRelation { agenda, followUp }
+
 /// §3.4 Capture.type
 enum CaptureType { text, audio, video, image }
 

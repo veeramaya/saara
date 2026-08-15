@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -169,6 +169,16 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(dayLogs, dayLogs.reflection);
         await m.addColumn(dayLogs, dayLogs.cardSharedAt);
         await m.addColumn(dayLogs, dayLogs.updatedAt);
+      }
+      // v16: how a child relates to its parent event — agenda vs follow-up (§4).
+      // Existing children are meeting action items; treat them as agenda so they
+      // land in the right section and carry on repeat.
+      if (from < 16) {
+        await m.addColumn(tasks, tasks.parentRelation);
+        await customStatement(
+          "UPDATE tasks SET parent_relation = 'agenda' "
+          'WHERE parent_event_id IS NOT NULL',
+        );
       }
     },
     beforeOpen: (details) async {
